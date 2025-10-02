@@ -26,14 +26,32 @@ Based on your existing Windows installation:
 
 ## Step-by-Step Process
 
-### Step 1: Shrink Windows Partition (Do this FIRST in Windows)
+### Step 1: Handle BitLocker and Shrink Windows Partition (Do this FIRST in Windows)
 
+**⚠️ IMPORTANT: Your Windows partition is encrypted with BitLocker!**
+
+#### **Option A: Disable BitLocker (Recommended)**
 1. **Boot into Windows**
-2. **Open Disk Management** (`diskmgmt.msc`)
-3. **Right-click on the large Windows partition** (475.7GB)
-4. **Select "Shrink Volume"**
-5. **Shrink by approximately 325GB** (150GB + 512MB + 150GB + 32GB + some buffer)
-6. **Leave the space unallocated** - don't create new partitions yet
+2. **Disable BitLocker**:
+   - Settings → Update & Security → Device encryption → Turn off
+   - Or: Control Panel → BitLocker Drive Encryption → Turn off BitLocker
+   - Or: Command Prompt (Admin): `manage-bde -off C:`
+3. **Wait for decryption** (may take several hours for 475GB)
+4. **Open Disk Management** (`diskmgmt.msc`)
+5. **Right-click on the Windows partition** (475.7GB)
+6. **Select "Shrink Volume"**
+7. **Shrink by approximately 325GB** (150GB + 512MB + 150GB + 40GB + buffer)
+8. **Leave the space unallocated**
+
+#### **Option B: Resize with BitLocker Enabled**
+1. **Boot into Windows**
+2. **Backup BitLocker recovery key** (Settings → Update & Security)
+3. **Open Disk Management** (`diskmgmt.msc`)
+4. **Right-click on the Windows partition** → Shrink Volume
+5. **BitLocker will automatically adjust** during resize
+6. **Leave the space unallocated**
+
+**See `BITLOCKER_GUIDE.md` for detailed instructions.**
 
 ### Step 2: Boot Arch Linux Installation Media
 

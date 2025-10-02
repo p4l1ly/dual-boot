@@ -352,18 +352,48 @@ format_partitions() {
 shrink_windows_partition() {
     log "Shrinking Windows partition from Linux..."
     
-    # Check if ntfs-3g is available
+    # Get current Windows partition info
+    local windows_part="${DISK}p3"
+    log "Analyzing Windows partition: $windows_part"
+    
+    # Check if partition is BitLocker encrypted
+    local fstype=$(lsblk -no FSTYPE "$windows_part")
+    log "Detected filesystem type: $fstype"
+    
+    if [[ "$fstype" == "BitLocker" || "$fstype" == "crypto_LUKS" ]]; then
+        error "Windows partition is encrypted with BitLocker!"
+        error "Cannot resize BitLocker encrypted partitions from Linux."
+        echo
+        warning "You have several options:"
+        echo "1. RECOMMENDED: Disable BitLocker in Windows, then resize"
+        echo "   - Boot Windows → Settings → Update & Security → Device encryption → Turn off"
+        echo "   - Or: Control Panel → BitLocker Drive Encryption → Turn off BitLocker"
+        echo "   - Wait for decryption to complete (may take hours)"
+        echo "   - Then use Windows Disk Management to shrink partition"
+        echo
+        echo "2. Use Windows tools only:"
+        echo "   - Boot Windows → Disk Management → Shrink Volume"
+        echo "   - BitLocker partitions can be resized from Windows"
+        echo
+        echo "3. Advanced: Use manage-bde command in Windows:"
+        echo "   - Open Command Prompt as Administrator"
+        echo "   - Run: manage-bde -status C: (check BitLocker status)"
+        echo "   - Temporarily disable: manage-bde -protectors -disable C:"
+        echo "   - Resize partition, then re-enable BitLocker"
+        echo
+        info "After resizing Windows partition, return here and run:"
+        info "./partition-setup.sh create  # to add Linux partitions"
+        exit 1
+    fi
+    
+    # Check if ntfs-3g is available for regular NTFS
     if ! command -v ntfsresize &> /dev/null; then
         error "ntfs-3g package is required for resizing NTFS partitions"
         info "Install it with: pacman -S ntfs-3g"
         exit 1
     fi
     
-    # Get current Windows partition info
-    local windows_part="${DISK}p3"
-    log "Analyzing Windows partition: $windows_part"
-    
-    # Check filesystem
+    # Check filesystem for regular NTFS
     if ! ntfsresize --info "$windows_part"; then
         error "Failed to get Windows partition info. Is it NTFS?"
         exit 1

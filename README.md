@@ -30,6 +30,13 @@ Comprehensive step-by-step installation guide covering:
 - Bootloader configuration
 - Post-installation configuration
 
+### 🔒 `BITLOCKER_GUIDE.md`
+Specialized guide for BitLocker-encrypted Windows systems:
+- BitLocker detection and handling
+- Safe resizing options
+- Dual boot compatibility
+- Security considerations
+
 ### 🔧 `arch-install.sh`
 Automated installation script that handles:
 - Partition verification
