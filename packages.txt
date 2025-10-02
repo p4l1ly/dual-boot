@@ -11,6 +11,8 @@ intel-media-driver 25.2.6-1
 intel-ucode 20250812-1
 libva-intel-driver 2.4.1-5
 vulkan-intel 1:25.2.1-4
+xf86-video-intel 1:2.99.917+916+g31486f40-3
+mesa 24.3.2-1
 
 # Audio system
 pipewire 1:1.4.7-1
@@ -29,17 +31,6 @@ wireguard-tools 1.0.20250521-1
 xorg-server 21.1.18-2
 xorg-xev 1.2.6-1
 xorg-xinit 1.4.4-1
-
-# Graphics drivers (AMD/Radeon - REMOVE if Dell XPS doesn't have AMD GPU)
-xf86-video-amdgpu 25.0.0-1
-xf86-video-ati 1:22.0.0-2
-vulkan-radeon 1:25.2.1-4
-
-# Graphics drivers (NVIDIA - REMOVE if Dell XPS doesn't have NVIDIA GPU)
-xf86-video-nouveau 1.0.18-1
-
-# VMware graphics (REMOVE - not needed for physical machine)
-xf86-video-vmware 13.4.0-3
 
 # Desktop environment (GNOME)
 gdm 48.0-2
