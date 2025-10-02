@@ -257,8 +257,15 @@ create_partitions() {
     
     # First, we need to shrink the Windows data partition (p3)
     log "Step 1: Shrinking Windows data partition..."
-    warning "You should shrink the Windows partition from Windows Disk Management first!"
-    warning "This script will only create the Linux partitions in the free space."
+    
+    echo -n "Do you want to shrink the Windows partition from Linux? (y/N): "
+    read -r SHRINK_REPLY
+    if [[ $SHRINK_REPLY =~ ^[Yy]$ ]]; then
+        shrink_windows_partition
+    else
+        warning "You should shrink the Windows partition from Windows Disk Management first!"
+        warning "This script will only create the Linux partitions in the free space."
+    fi
     
     # Calculate partition boundaries for Linux partitions
     local shared_end=$((linux_start_mb + SHARED_MB))
@@ -341,6 +348,99 @@ format_partitions() {
     log "All partitions formatted successfully!"
 }
 
+# Shrink Windows partition from Linux
+shrink_windows_partition() {
+    log "Shrinking Windows partition from Linux..."
+    
+    # Check if ntfs-3g is available
+    if ! command -v ntfsresize &> /dev/null; then
+        error "ntfs-3g package is required for resizing NTFS partitions"
+        info "Install it with: pacman -S ntfs-3g"
+        exit 1
+    fi
+    
+    # Get current Windows partition info
+    local windows_part="${DISK}p3"
+    log "Analyzing Windows partition: $windows_part"
+    
+    # Check filesystem
+    if ! ntfsresize --info "$windows_part"; then
+        error "Failed to get Windows partition info. Is it NTFS?"
+        exit 1
+    fi
+    
+    # Calculate target size (leave some buffer space)
+    local target_size_gb=150
+    local target_size_mb=$((target_size_gb * 1024))
+    local buffer_mb=1024  # 1GB buffer
+    local safe_target_mb=$((target_size_mb + buffer_mb))
+    
+    log "Current Windows partition size: $(lsblk -b --output SIZE -n "$windows_part" | numfmt --to=iec)"
+    log "Target size: ${target_size_gb}GB (${safe_target_mb}MB with buffer)"
+    
+    warning "This will shrink your Windows partition!"
+    warning "Make sure Windows is properly shut down (not hibernated)"
+    warning "Backup important data before proceeding"
+    echo
+    
+    echo -n "Continue with shrinking Windows partition? (y/N): "
+    read -r CONFIRM_SHRINK
+    if [[ ! $CONFIRM_SHRINK =~ ^[Yy]$ ]]; then
+        info "Windows partition shrinking cancelled"
+        return
+    fi
+    
+    # First, check and repair the filesystem
+    log "Checking Windows filesystem integrity..."
+    if ! ntfsfix "$windows_part"; then
+        warning "NTFS filesystem check found issues. Attempting repair..."
+        ntfsfix "$windows_part" || {
+            error "Failed to repair NTFS filesystem. Boot Windows and run chkdsk first."
+            exit 1
+        }
+    fi
+    
+    # Perform a dry run first
+    log "Performing dry run to check if resize is possible..."
+    if ! ntfsresize --no-action --size "${safe_target_mb}M" "$windows_part"; then
+        error "Dry run failed. Cannot safely resize Windows partition."
+        error "This might be due to:"
+        error "  - Insufficient free space"
+        error "  - Fragmented files at the end of partition"
+        error "  - System files that cannot be moved"
+        info "Try defragmenting Windows first, or use a smaller target size."
+        exit 1
+    fi
+    
+    log "Dry run successful. Proceeding with actual resize..."
+    
+    # Perform the actual resize
+    log "Resizing NTFS filesystem to ${safe_target_mb}MB..."
+    if ! ntfsresize --size "${safe_target_mb}M" "$windows_part"; then
+        error "Failed to resize NTFS filesystem"
+        exit 1
+    fi
+    
+    # Now resize the partition itself
+    log "Resizing partition table..."
+    
+    # Get the start sector of the Windows partition
+    local start_sector=$(parted "$DISK" unit s print | grep "^ 3" | awk '{print $2}' | sed 's/s//')
+    local new_end_sector=$(( (safe_target_mb * 1024 * 1024 / 512) + start_sector - 1 ))
+    
+    log "Resizing partition 3 to end at sector $new_end_sector"
+    
+    # Resize the partition
+    if ! parted "$DISK" resizepart 3 "${new_end_sector}s"; then
+        error "Failed to resize partition"
+        exit 1
+    fi
+    
+    log "Windows partition successfully shrunk!"
+    log "New layout:"
+    parted "$DISK" print
+}
+
 # Show final layout
 show_final_layout() {
     log "Final partition layout:"
@@ -357,13 +457,14 @@ interactive_menu() {
         echo "1. Show current disk layout"
         echo "2. Configure partition sizes"
         echo "3. Calculate partition sizes"
-        echo "4. Add Linux partitions (SAFE - preserves Windows)"
-        echo "5. Create new partition layout (DESTRUCTIVE - destroys Windows)"
-        echo "6. Format partitions"
-        echo "7. Show final layout"
-        echo "8. Exit"
+        echo "4. Shrink Windows partition (from Linux)"
+        echo "5. Add Linux partitions (SAFE - preserves Windows)"
+        echo "6. Create new partition layout (DESTRUCTIVE - destroys Windows)"
+        echo "7. Format partitions"
+        echo "8. Show final layout"
+        echo "9. Exit"
         echo
-        echo -n "Select an option (1-8): "
+        echo -n "Select an option (1-9): "
         read -r choice
         
         case $choice in
@@ -377,23 +478,26 @@ interactive_menu() {
                 calculate_sizes
                 ;;
             4)
-                create_partitions
+                shrink_windows_partition
                 ;;
             5)
-                create_partitions_new
+                create_partitions
                 ;;
             6)
-                format_partitions
+                create_partitions_new
                 ;;
             7)
-                show_final_layout
+                format_partitions
                 ;;
             8)
+                show_final_layout
+                ;;
+            9)
                 info "Exiting..."
                 exit 0
                 ;;
             *)
-                error "Invalid option. Please select 1-8."
+                error "Invalid option. Please select 1-9."
                 ;;
         esac
     done
@@ -421,6 +525,9 @@ main() {
             "calculate")
                 calculate_sizes
                 ;;
+            "shrink")
+                shrink_windows_partition
+                ;;
             "create")
                 create_partitions
                 ;;
@@ -431,11 +538,12 @@ main() {
                 show_final_layout
                 ;;
             *)
-                echo "Usage: $0 [show|configure|calculate|create|format|layout]"
+                echo "Usage: $0 [show|configure|calculate|shrink|create|format|layout]"
                 echo "  show      - Show current disk layout"
                 echo "  configure - Configure partition sizes"
                 echo "  calculate - Calculate partition sizes"
-                echo "  create    - Create partition layout"
+                echo "  shrink    - Shrink Windows partition from Linux"
+                echo "  create    - Add Linux partitions (safe mode)"
                 echo "  format    - Format partitions"
                 echo "  layout    - Show final layout"
                 echo "  (no args) - Interactive menu"
