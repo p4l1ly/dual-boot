@@ -270,8 +270,8 @@ configure_encryption() {
     arch-chroot /mnt cryptsetup luksAddKey "$ROOT_PART" /etc/keys/root.key
     arch-chroot /mnt cryptsetup luksAddKey "$SWAP_PART" /etc/keys/root.key
     
-    # Configure mkinitcpio
-    sed -i 's/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block filesystems fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 filesystems fsck)/' /mnt/etc/mkinitcpio.conf
+    # Configure mkinitcpio with hibernation support
+    sed -i 's/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block filesystems fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 resume filesystems fsck)/' /mnt/etc/mkinitcpio.conf
     
     # Regenerate initramfs
     arch-chroot /mnt mkinitcpio -P
@@ -286,10 +286,13 @@ configure_bootloader() {
     # Get UUID of root partition
     ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
     
-    # Configure GRUB
+    # Get swap partition UUID for hibernation
+    SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART")
+    
+    # Configure GRUB with hibernation support
     cat >> /mnt/etc/default/grub << EOF
 GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"
-GRUB_CMDLINE_LINUX="cryptdevice=UUID=$ROOT_UUID:root"
+GRUB_CMDLINE_LINUX="cryptdevice=UUID=$ROOT_UUID:root resume=UUID=$SWAP_UUID"
 EOF
     
     # Install GRUB

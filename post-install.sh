@@ -248,6 +248,86 @@ configure_services() {
     log "System services configured"
 }
 
+# Configure hibernation
+configure_hibernation() {
+    log "Configuring hibernation..."
+    
+    # Check if swap partition exists and is encrypted
+    if ! swapon --show | grep -q "/dev/mapper/swap"; then
+        warning "Encrypted swap not found. Hibernation may not work properly."
+        return
+    fi
+    
+    # Get swap partition info
+    SWAP_UUID=$(findmnt -no UUID -T /proc/swaps | tail -1)
+    if [[ -z "$SWAP_UUID" ]]; then
+        SWAP_UUID=$(blkid -s UUID -o value /dev/mapper/swap)
+    fi
+    
+    log "Swap UUID: $SWAP_UUID"
+    
+    # Configure systemd for hibernation
+    log "Configuring systemd hibernation settings..."
+    
+    # Create systemd sleep configuration
+    sudo tee /etc/systemd/sleep.conf << EOF
+[Sleep]
+AllowSuspend=yes
+AllowHibernation=yes
+AllowSuspendThenHibernate=yes
+AllowHybridSleep=yes
+SuspendMode=
+SuspendState=mem standby freeze
+HibernateMode=platform shutdown
+HibernateState=disk
+HybridSleepMode=suspend platform shutdown
+HybridSleepState=disk
+SuspendToHibernateDelay=2h
+EOF
+    
+    # Test hibernation capability
+    log "Testing hibernation capability..."
+    if sudo test -f /sys/power/disk; then
+        log "Hibernation is supported by kernel"
+        log "Available hibernation modes: $(cat /sys/power/disk)"
+    else
+        warning "Hibernation may not be supported by kernel"
+    fi
+    
+    # Create hibernation test script
+    cat > "$HOME/bin/test-hibernation" << 'EOF'
+#!/bin/bash
+# Test hibernation script
+
+echo "Testing hibernation capability..."
+
+# Check swap
+echo "Swap status:"
+swapon --show
+
+# Check hibernation support
+echo "Hibernation support:"
+cat /sys/power/state
+
+echo "Hibernation modes:"
+cat /sys/power/disk
+
+# Check resume device
+echo "Resume device in kernel parameters:"
+cat /proc/cmdline | grep -o 'resume=[^ ]*'
+
+echo "To test hibernation, run: sudo systemctl hibernate"
+echo "To test suspend-then-hibernate: sudo systemctl suspend-then-hibernate"
+EOF
+    
+    chmod +x "$HOME/bin/test-hibernation"
+    
+    log "Hibernation configured successfully!"
+    info "Test hibernation with: ~/bin/test-hibernation"
+    info "Hibernate with: sudo systemctl hibernate"
+    info "Suspend-then-hibernate: sudo systemctl suspend-then-hibernate"
+}
+
 # Configure security
 configure_security() {
     log "Configuring security..."
@@ -341,6 +421,7 @@ main() {
     configure_development
     configure_gnome
     configure_services
+    configure_hibernation
     configure_security
     configure_backup
     configure_shared_storage

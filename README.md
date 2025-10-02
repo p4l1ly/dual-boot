@@ -8,6 +8,7 @@ Your new Dell XPS 13" 9350 (258V, 32GB RAM, 512GB SSD, 13.4", OLED, 3K Touch) wi
 
 - **Dual Boot**: Windows + Arch Linux
 - **Encryption**: Full disk encryption for Linux partitions using LUKS
+- **Hibernation**: Full hibernation support with encrypted swap
 - **Shared Storage**: NTFS partition accessible from both operating systems
 - **Optimized Setup**: Intel-specific drivers and power management
 
@@ -98,12 +99,14 @@ sudo ./arch-install.sh
 ## Partition Layout
 
 ```
-/dev/nvme0n1p1  EFI System Partition    512MB   FAT32
-/dev/nvme0n1p2  Windows System          ~200GB  NTFS
-/dev/nvme0n1p3  Shared Storage          ~100GB  NTFS
-/dev/nvme0n1p4  Linux Boot             512MB   EXT4
-/dev/nvme0n1p5  Linux Root (Encrypted) ~100GB  LUKS
-/dev/nvme0n1p6  Linux Swap             8GB     LUKS
+/dev/nvme0n1p1  EFI System Partition    260MB   FAT32
+/dev/nvme0n1p2  Microsoft Reserved      16MB    NTFS
+/dev/nvme0n1p3  Windows System          150GB   NTFS
+/dev/nvme0n1p4  Windows Recovery        990MB   NTFS
+/dev/nvme0n1p5  Shared Storage          150GB   NTFS
+/dev/nvme0n1p6  Linux Boot             512MB   EXT4
+/dev/nvme0n1p7  Linux Root (Encrypted) 150GB   LUKS
+/dev/nvme0n1p8  Linux Swap (Encrypted) 40GB    LUKS (sized for hibernation)
 ```
 
 ## Package Categories
