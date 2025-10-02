@@ -266,9 +266,10 @@ configure_encryption() {
     dd bs=512 count=4 if=/dev/urandom of=/mnt/etc/keys/root.key
     chmod 600 /mnt/etc/keys/root.key
     
-    # Add keyfile to LUKS
+    # Add keyfile to LUKS partitions
     arch-chroot /mnt cryptsetup luksAddKey "$ROOT_PART" /etc/keys/root.key
     arch-chroot /mnt cryptsetup luksAddKey "$SWAP_PART" /etc/keys/root.key
+    arch-chroot /mnt cryptsetup luksAddKey "$SHARED_PART" /etc/keys/root.key
     
     # Configure mkinitcpio with hibernation support
     sed -i 's/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block filesystems fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 resume filesystems fsck)/' /mnt/etc/mkinitcpio.conf
@@ -315,17 +316,23 @@ configure_services() {
     log "Services configuration completed"
 }
 
-# Configure shared storage
+# Configure encrypted shared storage
 configure_shared_storage() {
-    log "Configuring shared storage..."
+    log "Configuring encrypted shared storage..."
     
     # Create mount point
     mkdir -p /mnt/mnt/shared
     
-    # Add to fstab for automatic mounting
-    echo "$SHARED_PART /mnt/shared ntfs-3g defaults,uid=1000,gid=1000,umask=0022,noatime 0 0" >> /mnt/etc/fstab
+    # Create crypttab entry for shared partition
+    SHARED_UUID=$(blkid -s UUID -o value "$SHARED_PART")
+    echo "shared UUID=$SHARED_UUID /etc/keys/root.key luks" >> /mnt/etc/crypttab
     
-    log "Shared storage configuration completed"
+    # Add to fstab for automatic mounting
+    echo "/dev/mapper/shared /mnt/shared ext4 defaults,noatime 0 2" >> /mnt/etc/fstab
+    
+    log "Encrypted shared storage configuration completed"
+    info "Shared partition will be automatically decrypted and mounted on boot"
+    info "Accessible from Windows via WSL after proper setup"
 }
 
 # Set passwords

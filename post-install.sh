@@ -375,7 +375,73 @@ configure_shared_storage() {
     # Set permissions
     sudo chown "$USERNAME:$USERNAME" /mnt/shared
     
-    log "Shared storage configured"
+    log "Encrypted shared storage configured"
+    info "To access from Windows:"
+    info "1. Install WSL: wsl --install"
+    info "2. Install Ubuntu or preferred distro"
+    info "3. Follow WSL setup guide for encrypted partition access"
+}
+
+# Configure WSL access helper
+configure_wsl_access() {
+    log "Creating WSL access configuration..."
+    
+    # Create WSL mount script
+    cat > "$HOME/bin/mount-shared-wsl" << 'EOF'
+#!/bin/bash
+# Script to help mount encrypted shared partition in WSL
+
+echo "WSL Encrypted Partition Access Guide"
+echo "===================================="
+echo
+echo "1. From Windows, install WSL:"
+echo "   wsl --install"
+echo
+echo "2. Install Ubuntu or your preferred distribution"
+echo
+echo "3. In WSL, install cryptsetup:"
+echo "   sudo apt update && sudo apt install cryptsetup"
+echo
+echo "4. Access the encrypted partition:"
+echo "   # List available disks"
+echo "   lsblk"
+echo "   # Open encrypted partition (replace nvme0n1p5 with your partition)"
+echo "   sudo cryptsetup open /dev/nvme0n1p5 shared"
+echo "   # Create mount point"
+echo "   sudo mkdir -p /mnt/shared"
+echo "   # Mount the partition"
+echo "   sudo mount /dev/mapper/shared /mnt/shared"
+echo
+echo "5. Create a Windows-accessible symlink:"
+echo "   ln -s /mnt/shared ~/shared"
+echo
+echo "6. Access from Windows File Explorer:"
+echo "   \\\\wsl$\\Ubuntu\\home\\username\\shared"
+echo
+echo "Note: You'll need to enter the LUKS password each time you open the partition in WSL"
+EOF
+    
+    chmod +x "$HOME/bin/mount-shared-wsl"
+    
+    # Create systemd service for automatic mounting
+    sudo tee /etc/systemd/system/mount-shared.service << EOF
+[Unit]
+Description=Mount encrypted shared partition
+After=cryptsetup.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'if [ -b /dev/mapper/shared ]; then mkdir -p /mnt/shared && mount /dev/mapper/shared /mnt/shared; fi'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    sudo systemctl enable mount-shared.service
+    
+    log "WSL access configuration completed"
+    info "Run ~/bin/mount-shared-wsl for WSL setup instructions"
 }
 
 # Create useful scripts
@@ -425,6 +491,7 @@ main() {
     configure_security
     configure_backup
     configure_shared_storage
+    configure_wsl_access
     create_scripts
     
     log "Post-installation setup completed successfully!"

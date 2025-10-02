@@ -230,10 +230,24 @@ create_partitions() {
         warning "Microsoft Reserved partition not found"
     fi
     
-    # Calculate where to start Linux partitions (after Windows recovery)
-    # Assuming Windows partitions end around 476GB + recovery
-    local linux_start_gb=477  # Start after Windows recovery partition
-    local linux_start_mb=$((linux_start_gb * 1024))
+    # Calculate where to start Linux partitions (dynamically detect free space)
+    log "Detecting free space after Windows partitions..."
+    
+    # Get the end of the last Windows partition (p4 - Recovery)
+    local recovery_end_sector=$(parted "$DISK" unit s print | grep "^ 4" | awk '{print $3}' | sed 's/s//')
+    if [[ -z "$recovery_end_sector" ]]; then
+        error "Could not detect Windows Recovery partition end. Please check partition layout."
+        exit 1
+    fi
+    
+    # Convert sectors to MB (assuming 512 bytes per sector)
+    local recovery_end_mb=$(( (recovery_end_sector * 512) / (1024 * 1024) ))
+    
+    # Start Linux partitions right after Windows Recovery, with small gap for alignment
+    local linux_start_mb=$((recovery_end_mb + 1))
+    
+    log "Windows Recovery partition ends at sector $recovery_end_sector (${recovery_end_mb}MB)"
+    log "Linux partitions will start at ${linux_start_mb}MB"
     
     warning "This will add Linux partitions after your existing Windows partitions"
     info "Windows partitions will be preserved:"
@@ -279,9 +293,23 @@ create_partitions() {
     log "  Root: ${boot_end}MiB - ${root_end}MiB"
     log "  Swap: ${root_end}MiB - ${swap_end}MiB"
     
-    # Create Shared Storage Partition
-    log "Creating Shared Storage Partition (${SHARED_SIZE})..."
-    parted "$DISK" mkpart primary ntfs "${linux_start_mb}MiB" "${shared_end}MiB"
+    # Create Shared Storage Partition (LUKS encrypted for WSL access)
+    log "Creating LUKS Encrypted Shared Storage Partition (${SHARED_SIZE})..."
+    echo
+    info "Creating LUKS encrypted partition for WSL access:"
+    info "- Encrypted with LUKS (Linux native)"
+    info "- Accessible from Linux directly"
+    info "- Accessible from Windows via WSL"
+    info "- Secure: Full disk encryption"
+    echo
+    
+    log "Creating LUKS encrypted shared partition..."
+    parted "$DISK" mkpart primary "${linux_start_mb}MiB" "${shared_end}MiB"
+    
+    info "Post-installation setup required:"
+    info "1. Install WSL on Windows"
+    info "2. Configure WSL to access encrypted partition"
+    info "3. Set up automatic mounting in both systems"
     
     # Create Linux Boot Partition
     log "Creating Linux Boot Partition (${BOOT_SIZE})..."
@@ -312,9 +340,25 @@ format_partitions() {
     log "Formatting Windows partition..."
     mkfs.ntfs -Q -L "Windows" "${DISK}p2"
     
-    # Format shared storage partition
-    log "Formatting shared storage partition..."
-    mkfs.ntfs -Q -L "Shared" "${DISK}p3"
+    # Format shared storage partition (LUKS encrypted)
+    log "Setting up LUKS encrypted shared partition..."
+    
+    log "Creating LUKS container..."
+    cryptsetup luksFormat "${DISK}p5"
+    
+    log "Opening LUKS container..."
+    cryptsetup open "${DISK}p5" shared
+    
+    log "Creating ext4 filesystem..."
+    mkfs.ext4 -F -L "SharedEncrypted" /dev/mapper/shared
+    
+    log "Closing LUKS container..."
+    cryptsetup close shared
+    
+    log "Shared partition encrypted and formatted successfully!"
+    info "This partition will be accessible from:"
+    info "- Linux: Native LUKS support"
+    info "- Windows: Via WSL with proper setup"
     
     # Format Linux boot partition
     log "Formatting Linux boot partition..."
