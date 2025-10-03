@@ -21,21 +21,12 @@ Curated list of packages with comments indicating which ones are:
 - Potentially outdated/unnecessary
 - Experimental or legacy
 
-### 📖 `ARCH_DUAL_BOOT_GUIDE.md`
-Comprehensive step-by-step installation guide covering:
-- Pre-installation preparation
-- Partition strategy
+### 📖 `INSTALLATION_GUIDE.md`
+Streamlined installation guide with rigid steps:
+- Windows partition shrinking (BitLocker safe)
+- Linux partition creation and formatting
 - Arch Linux installation
-- Encryption setup
-- Bootloader configuration
-- Post-installation configuration
-
-### 🔒 `BITLOCKER_GUIDE.md`
-Specialized guide for BitLocker-encrypted Windows systems:
-- BitLocker detection and handling
-- Safe resizing options
-- Dual boot compatibility
-- Security considerations
+- WSL setup for shared storage access
 
 ### 🔧 `arch-install.sh`
 Automated installation script that handles:
@@ -46,11 +37,10 @@ Automated installation script that handles:
 - Service configuration
 
 ### 💾 `partition-setup.sh`
-Interactive partition management script for:
-- Planning partition layout
-- Creating partitions
-- Formatting filesystems
-- Setting up encryption
+Streamlined partition script for:
+- Adding Linux partitions after Windows shrinking
+- LUKS encryption setup
+- No Windows partition modification
 
 ### ⚙️ `post-install.sh`
 Post-installation configuration script for:
@@ -62,45 +52,33 @@ Post-installation configuration script for:
 
 ## Quick Start
 
-### 1. Prepare Windows
+### 1. Shrink Windows Partition (REQUIRED FIRST)
 ```bash
-# Disable Fast Startup
-powercfg /h off
-
-# Shrink Windows partition in Disk Management
-# Leave ~300GB for Linux + shared storage
+# In Windows Disk Management (diskmgmt.msc)
+# Right-click Windows partition → Shrink Volume
+# Shrink by 325GB (BitLocker partitions can be resized safely)
 ```
 
-### 2. Create Installation Media
+### 2. Create Arch Linux USB
 ```bash
-# Download Arch Linux ISO
 wget https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso
-
-# Create bootable USB
 sudo dd bs=4M if=archlinux-x86_64.iso of=/dev/sdX status=progress oflag=sync
 ```
 
-### 3. Boot and Partition
+### 3. Install Linux Partitions
 ```bash
-# Boot from USB
-# Connect to internet
-ping -c 3 archlinux.org
-
-# Run partition setup
-sudo ./partition-setup.sh
+# Boot from USB, connect to internet
+./partition-setup.sh  # Option 2: Add Linux partitions
+./partition-setup.sh  # Option 3: Format Linux partitions
+sudo ./arch-install.sh  # Install Arch Linux
+./post-install.sh  # Configure system
 ```
 
-### 4. Install Arch Linux
-```bash
-# Run automated installation
-sudo ./arch-install.sh
-```
-
-### 5. Post-Installation Setup
-```bash
-# Boot into Arch Linux
-# Run post-installation configuration
-./post-install.sh
+### 4. Set Up WSL (Windows)
+```powershell
+wsl --install  # Install WSL
+# In WSL: sudo cryptsetup open /dev/nvme0n1p5 shared
+# Access: \\wsl$\Ubuntu\home\username\shared
 ```
 
 ## Partition Layout
