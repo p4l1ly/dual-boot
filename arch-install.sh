@@ -133,9 +133,9 @@ mount_partitions() {
     mkdir -p /install/mnt/shared
 }
 
-# Install base system from packages.txt
+# Install base system from packages.txt and packages-aur.txt
 install_base_system() {
-    log "Installing base system from packages.txt..."
+    log "Installing base system from packages.txt and packages-aur.txt..."
     
     # Check if packages.txt exists
     if [[ ! -f "packages.txt" ]]; then
@@ -143,19 +143,32 @@ install_base_system() {
         exit 1
     fi
     
-    # Extract package names from packages.txt (ignore comments, versions, and commented lines)
-    local packages=$(grep -v '^#' packages.txt | grep -v '^$' | sed 's/#.*//' | awk '{print $1}' | grep -v '^$' | tr '\n' ' ')
+    # Extract official package names from packages.txt
+    local official_packages=$(grep -v '^#' packages.txt | grep -v '^$' | sed 's/#.*//' | awk '{print $1}' | grep -v '^$' | tr '\n' ' ')
     
-    if [[ -z "$packages" ]]; then
+    if [[ -z "$official_packages" ]]; then
         error "No packages found in packages.txt"
         exit 1
     fi
     
-    log "Found $(echo $packages | wc -w) packages to install"
-    info "Installing packages from packages.txt..."
+    # Extract AUR package names from packages-aur.txt if it exists
+    local aur_packages=""
+    if [[ -f "packages-aur.txt" ]]; then
+        aur_packages=$(grep -v '^#' packages-aur.txt | grep -v '^$' | sed 's/#.*//' | awk '{print $1}' | grep -v '^$' | tr '\n' ' ')
+    fi
     
-    # Install all packages at once
-    pacstrap /install $packages
+    log "Found $(echo $official_packages | wc -w) official packages and $(echo $aur_packages | wc -w) AUR packages"
+    
+    # Install official packages first
+    info "Installing official packages via pacstrap..."
+    pacstrap /install $official_packages
+    
+    # Store AUR packages for later installation (after user creation)
+    if [[ -n "$(echo $aur_packages | tr -d ' ')" ]]; then
+        mkdir -p /install/tmp
+        echo "$aur_packages" > /install/tmp/aur_packages.txt
+        info "AUR packages will be installed after user creation"
+    fi
     
     log "Base system installation completed"
 }
@@ -276,6 +289,53 @@ configure_services() {
     log "Services configuration completed"
 }
 
+# Install AUR packages
+install_aur_packages() {
+    log "Installing AUR packages..."
+    
+    # Check if there are AUR packages to install
+    if [[ ! -f "/install/tmp/aur_packages.txt" ]]; then
+        info "No AUR packages to install"
+        return
+    fi
+    
+    local aur_packages=$(cat /install/tmp/aur_packages.txt)
+    if [[ -z "$aur_packages" ]]; then
+        info "No AUR packages to install"
+        return
+    fi
+    
+    info "Installing yay-bin for AUR package management..."
+    
+    # Install yay-bin manually
+    arch-chroot /install /bin/bash -c "
+        # Ensure tmp directory exists and is writable
+        mkdir -p /tmp/yay-install
+        cd /tmp/yay-install
+        
+        # Install yay-bin as the user
+        sudo -u $USERNAME bash -c '
+            git clone https://aur.archlinux.org/yay-bin.git
+            cd yay-bin
+            makepkg -si --noconfirm
+        '
+    "
+    
+    # Remove yay-bin from the list if it exists
+    aur_packages=$(echo "$aur_packages" | sed 's/yay-bin//' | sed 's/  / /g' | sed 's/^ *//' | sed 's/ *$//')
+    
+    # Install remaining AUR packages
+    if [[ -n "$aur_packages" ]]; then
+        info "Installing remaining AUR packages: $aur_packages"
+        arch-chroot /install sudo -u "$USERNAME" yay -S --noconfirm $aur_packages
+    fi
+    
+    # Cleanup
+    rm -f /install/tmp/aur_packages.txt
+    
+    log "AUR packages installation completed"
+}
+
 # Configure encrypted shared storage
 configure_shared_storage() {
     log "Configuring encrypted shared storage..."
@@ -355,6 +415,7 @@ main() {
     configure_encryption
     configure_bootloader
     configure_services
+    install_aur_packages
     configure_shared_storage
     set_passwords
     cleanup_and_reboot

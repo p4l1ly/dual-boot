@@ -43,7 +43,6 @@ python-pynvim 0.5.2-1
 rust-analyzer 20250825-1
 rustup 1.28.2-3
 go 2:1.24.6-1
-ghcup-hs-bin 0.1.20.0-1
 pyenv 1:2.6.7-1
 npm 11.5.2-1
 yarn 1.22.22-2
@@ -80,11 +79,6 @@ kubectx 0.9.5-1
 kustomize 5.7.1-1
 k9s 0.50.9-1
 
-# Cloud tools
-google-cloud-cli 538.0.0-1
-google-cloud-cli-gke-gcloud-auth-plugin 538.0.0-1
-astro-cli v1.14.1-1
-
 # GitLab tools
 gitlab-runner 18.3.0-1
 glab 1.67.0-1
@@ -101,13 +95,10 @@ vault 1.20.1-1
 keepassxc 2.7.10-4
 
 # Package management
-yay-bin 12.4.2-1
 pkgfile 24-1
 
 # Shell and terminal
 zsh 5.9-5
-oh-my-zsh-git r6983.1c55a0fe5-1
-bullet-train-oh-my-zsh-theme-git v0.0.5.r236.gd60f62c-1
 powerline 2.8.4-3
 powerline-fonts 2.8.4-3
 fzf 0.65.1-1
@@ -117,7 +108,6 @@ direnv 2.37.1-1
 noto-fonts-emoji 1:2.048-1
 otf-fira-mono 2:3.206-4
 ttc-iosevka 33.2.8-1
-ttf-ancient-fonts 2.60-2
 ttf-fira-code 6.2-2
 ttf-fira-mono 2:3.206-4
 woff-fira-code 6.2-2
@@ -150,10 +140,8 @@ gimp 3.0.4-4
 inkscape 1.4.2-7
 blender 17:4.5.2-2
 f3d 3.2.0-6
-meshlab 2023.12-3
 freecad 1.0.2-2
 openscad 2021.01-17
-openscad-threadlib-git r87.3830919-1
 obs-studio 31.1.2-1
 
 # Office and productivity
@@ -173,7 +161,6 @@ texlive-luatex 2025.2-2
 texlive-mathscience 2025.2-2
 texlive-plaingeneric 2025.2-2
 texlive-publishers 2025.2-2
-textext 1.9.0-1
 
 # Web browsers
 firefox 142.0.1-1
@@ -181,18 +168,6 @@ chromium 139.0.7258.154-1
 
 # Communication
 discord 1:0.0.107-1
-slack-desktop 4.43.43-1
-zoom 6.1.6-1
-
-# VPN
-openfortivpn 1.23.1-1
-
-# Virtualization (consider if needed)
-virtualbox 7.2.0-1
-virtualbox-guest-iso 7.2.0-1
-
-# Wine/Windows compatibility (consider if needed)
-playonlinux 4.4+29+gd0ae9ce6-2
 
 # Jupyter and data science
 jupyter-notebook 7.4.5-1
