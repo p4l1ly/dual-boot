@@ -98,6 +98,35 @@ verify_partitions() {
     log "All partitions verified"
 }
 
+# Cleanup any existing installation state
+cleanup_existing_state() {
+    log "Cleaning up any existing installation state..."
+    
+    # Deactivate any active swap
+    swapoff -a 2>/dev/null || true
+    
+    # Unmount any mounted filesystems under /install
+    if mountpoint -q /install 2>/dev/null; then
+        warning "Found existing mounts under /install, unmounting..."
+        umount -R /install 2>/dev/null || true
+    fi
+    
+    # Close any open LUKS containers
+    for container in root swap shared; do
+        if cryptsetup status "$container" >/dev/null 2>&1; then
+            warning "Closing existing LUKS container: $container"
+            cryptsetup close "$container"
+        fi
+    done
+    
+    # Remove installation directory if it exists
+    if [[ -d "/install" ]]; then
+        rmdir /install 2>/dev/null || true
+    fi
+    
+    log "Cleanup completed"
+}
+
 # Open encrypted containers (formatting done by partition-setup.sh)
 open_encrypted_containers() {
     log "Opening encrypted containers..."
@@ -407,6 +436,7 @@ main() {
         exit 0
     fi
     
+    cleanup_existing_state
     open_encrypted_containers
     mount_partitions
     install_base_system
