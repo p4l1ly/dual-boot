@@ -115,19 +115,22 @@ open_encrypted_containers() {
 mount_partitions() {
     log "Mounting partitions..."
     
+    # Create installation mount point
+    mkdir -p /install
+    
     # Mount root partition
-    mount /dev/mapper/root /mnt
+    mount /dev/mapper/root /install
     
     # Mount EFI partition at /boot (systemd-boot requirement)
-    mkdir -p /mnt/boot
-    mount "$EFI_PART" /mnt/boot
+    mkdir -p /install/boot
+    mount "$EFI_PART" /install/boot
     
     # Mount Linux boot partition at /boot/linux
-    mkdir -p /mnt/boot/linux
-    mount "$BOOT_PART" /mnt/boot/linux
+    mkdir -p /install/boot/linux
+    mount "$BOOT_PART" /install/boot/linux
     
     # Create shared storage mount point (will be configured later)
-    mkdir -p /mnt/mnt/shared
+    mkdir -p /install/mnt/shared
 }
 
 # Install base system from packages.txt
@@ -152,7 +155,7 @@ install_base_system() {
     info "Installing packages from packages.txt..."
     
     # Install all packages at once
-    pacstrap /mnt $packages
+    pacstrap /install $packages
     
     log "Base system installation completed"
 }
@@ -160,7 +163,7 @@ install_base_system() {
 # Generate fstab
 generate_fstab() {
     log "Generating fstab..."
-    genfstab -U /mnt >> /mnt/etc/fstab
+    genfstab -U /install >> /install/etc/fstab
 }
 
 # Configure system
@@ -168,29 +171,29 @@ configure_system() {
     log "Configuring system..."
     
     # Set timezone
-    arch-chroot /mnt ln -sf /usr/share/zoneinfo/"$TIMEZONE" /etc/localtime
-    arch-chroot /mnt hwclock --systohc
+    arch-chroot /install ln -sf /usr/share/zoneinfo/"$TIMEZONE" /etc/localtime
+    arch-chroot /install hwclock --systohc
     
     # Configure locale
-    echo "$LOCALE UTF-8" >> /mnt/etc/locale.gen
-    arch-chroot /mnt locale-gen
-    echo "LANG=$LOCALE" > /mnt/etc/locale.conf
+    echo "$LOCALE UTF-8" >> /install/etc/locale.gen
+    arch-chroot /install locale-gen
+    echo "LANG=$LOCALE" > /install/etc/locale.conf
     
     # Set hostname
-    echo "$HOSTNAME" > /mnt/etc/hostname
+    echo "$HOSTNAME" > /install/etc/hostname
     
     # Configure hosts file
-    cat >> /mnt/etc/hosts << EOF
+    cat >> /install/etc/hosts << EOF
 127.0.0.1	localhost
 ::1		localhost
 127.0.1.1	$HOSTNAME.localdomain	$HOSTNAME
 EOF
     
     # Create user account
-    arch-chroot /mnt useradd -m -G wheel -s /bin/zsh "$USERNAME"
+    arch-chroot /install useradd -m -G wheel -s /bin/zsh "$USERNAME"
     
     # Configure sudo
-    sed -i 's/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /mnt/etc/sudoers
+    sed -i 's/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /install/etc/sudoers
     
     log "System configuration completed"
 }
@@ -200,20 +203,20 @@ configure_encryption() {
     log "Configuring encryption..."
     
     # Create keyfile
-    mkdir -p /mnt/etc/keys
-    dd bs=512 count=4 if=/dev/urandom of=/mnt/etc/keys/root.key
-    chmod 600 /mnt/etc/keys/root.key
+    mkdir -p /install/etc/keys
+    dd bs=512 count=4 if=/dev/urandom of=/install/etc/keys/root.key
+    chmod 600 /install/etc/keys/root.key
     
     # Add keyfile to LUKS partitions
-    arch-chroot /mnt cryptsetup luksAddKey "$ROOT_PART" /etc/keys/root.key
-    arch-chroot /mnt cryptsetup luksAddKey "$SWAP_PART" /etc/keys/root.key
-    arch-chroot /mnt cryptsetup luksAddKey "$SHARED_PART" /etc/keys/root.key
+    arch-chroot /install cryptsetup luksAddKey "$ROOT_PART" /etc/keys/root.key
+    arch-chroot /install cryptsetup luksAddKey "$SWAP_PART" /etc/keys/root.key
+    arch-chroot /install cryptsetup luksAddKey "$SHARED_PART" /etc/keys/root.key
     
     # Configure mkinitcpio with hibernation support
-    sed -i 's/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block filesystems fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 resume filesystems fsck)/' /mnt/etc/mkinitcpio.conf
+    sed -i 's/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block filesystems fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 resume filesystems fsck)/' /install/etc/mkinitcpio.conf
     
     # Regenerate initramfs
-    arch-chroot /mnt mkinitcpio -P
+    arch-chroot /install mkinitcpio -P
     
     log "Encryption configuration completed"
 }
@@ -229,10 +232,10 @@ configure_bootloader() {
     SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART")
     
     # Install systemd-boot
-    arch-chroot /mnt bootctl install
+    arch-chroot /install bootctl install
     
     # Configure systemd-boot loader
-    cat > /mnt/boot/loader/loader.conf << EOF
+    cat > /install/boot/loader/loader.conf << EOF
 default  arch.conf
 timeout  4
 console-mode max
@@ -240,7 +243,7 @@ editor   no
 EOF
     
     # Create Arch Linux boot entry
-    cat > /mnt/boot/loader/entries/arch.conf << EOF
+    cat > /install/boot/loader/entries/arch.conf << EOF
 title   Arch Linux
 linux   /linux/vmlinuz-linux
 initrd  /intel-ucode.img
@@ -249,7 +252,7 @@ options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP
 EOF
     
     # Create Arch Linux fallback boot entry
-    cat > /mnt/boot/loader/entries/arch-fallback.conf << EOF
+    cat > /install/boot/loader/entries/arch-fallback.conf << EOF
 title   Arch Linux (fallback initramfs)
 linux   /linux/vmlinuz-linux
 initrd  /intel-ucode.img
@@ -265,10 +268,10 @@ configure_services() {
     log "Configuring services..."
     
     # Enable essential services
-    arch-chroot /mnt systemctl enable gdm
-    arch-chroot /mnt systemctl enable NetworkManager
-    arch-chroot /mnt systemctl enable bluetooth
-    arch-chroot /mnt systemctl enable fstrim.timer
+    arch-chroot /install systemctl enable gdm
+    arch-chroot /install systemctl enable NetworkManager
+    arch-chroot /install systemctl enable bluetooth
+    arch-chroot /install systemctl enable fstrim.timer
     
     log "Services configuration completed"
 }
@@ -278,14 +281,14 @@ configure_shared_storage() {
     log "Configuring encrypted shared storage..."
     
     # Create mount point
-    mkdir -p /mnt/mnt/shared
+    mkdir -p /install/mnt/shared
     
     # Create crypttab entry for shared partition
     SHARED_UUID=$(blkid -s UUID -o value "$SHARED_PART")
-    echo "shared UUID=$SHARED_UUID /etc/keys/root.key luks" >> /mnt/etc/crypttab
+    echo "shared UUID=$SHARED_UUID /etc/keys/root.key luks" >> /install/etc/crypttab
     
     # Add to fstab for automatic mounting
-    echo "/dev/mapper/shared /mnt/shared ext4 defaults,noatime 0 2" >> /mnt/etc/fstab
+    echo "/dev/mapper/shared /mnt/shared ext4 defaults,noatime 0 2" >> /install/etc/fstab
     
     log "Encrypted shared storage configuration completed"
     info "Shared partition will be automatically decrypted and mounted on boot"
@@ -297,10 +300,10 @@ set_passwords() {
     log "Setting passwords..."
     
     info "Setting root password..."
-    arch-chroot /mnt passwd root
+    arch-chroot /install passwd root
     
     info "Setting user password for $USERNAME..."
-    arch-chroot /mnt passwd "$USERNAME"
+    arch-chroot /install passwd "$USERNAME"
 }
 
 # Cleanup and reboot
@@ -316,7 +319,7 @@ cleanup_and_reboot() {
     cryptsetup close shared
     
     # Unmount partitions
-    umount -R /mnt
+    umount -R /install
     
     log "Installation completed successfully!"
     info "You can now reboot into your new Arch Linux installation"
