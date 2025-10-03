@@ -15,9 +15,9 @@ ROOT_PART="/dev/nvme0n1p6"      # Linux Root Partition (LUKS encrypted)
 SHARED_PART="/dev/nvme0n1p7"    # Shared Storage Partition (LUKS encrypted)
 SWAP_PART="/dev/nvme0n1p8"      # Linux Swap Partition (LUKS encrypted)
 RECOVERY_PART="/dev/nvme0n1p4"  # Windows Recovery (990MB, physically moved to end)
-HOSTNAME="dell-xps"
+HOSTNAME="palypc"
 USERNAME=""
-TIMEZONE="America/New_York"
+TIMEZONE="Europe/Prague"
 LOCALE="en_US.UTF-8"
 
 # Colors for output
@@ -98,48 +98,17 @@ verify_partitions() {
     log "All partitions verified"
 }
 
-# Format partitions
-format_partitions() {
-    log "Formatting partitions..."
-    
-    # Format EFI partition
-    if ! blkid "$EFI_PART" | grep -q "vfat"; then
-        log "Formatting EFI partition..."
-        mkfs.fat -F32 "$EFI_PART"
-    else
-        warning "EFI partition already formatted"
-    fi
-    
-    # Format boot partition
-    log "Formatting boot partition..."
-    mkfs.ext4 -F "$BOOT_PART"
-    
-    # Create encrypted containers
-    log "Setting up encryption..."
-    
-    if ! cryptsetup isLuks "$ROOT_PART"; then
-        log "Creating LUKS container for root..."
-        cryptsetup luksFormat "$ROOT_PART"
-    else
-        warning "Root partition already encrypted"
-    fi
-    
-    if ! cryptsetup isLuks "$SWAP_PART"; then
-        log "Creating LUKS container for swap..."
-        cryptsetup luksFormat "$SWAP_PART"
-    else
-        warning "Swap partition already encrypted"
-    fi
+# Open encrypted containers (formatting done by partition-setup.sh)
+open_encrypted_containers() {
+    log "Opening encrypted containers..."
     
     # Open encrypted containers
-    log "Opening encrypted containers..."
     cryptsetup open "$ROOT_PART" root
     cryptsetup open "$SWAP_PART" swap
+    cryptsetup open "$SHARED_PART" shared
     
-    # Format encrypted partitions
-    log "Formatting encrypted partitions..."
-    mkfs.ext4 -F /dev/mapper/root
-    mkswap /dev/mapper/swap
+    # Activate swap
+    swapon /dev/mapper/swap
 }
 
 # Mount partitions
@@ -149,72 +118,135 @@ mount_partitions() {
     # Mount root partition
     mount /dev/mapper/root /mnt
     
-    # Create and mount boot directory
+    # Mount EFI partition at /boot (systemd-boot requirement)
     mkdir -p /mnt/boot
-    mount "$BOOT_PART" /mnt/boot
+    mount "$EFI_PART" /mnt/boot
     
-    # Create and mount EFI directory
-    mkdir -p /mnt/boot/efi
-    mount "$EFI_PART" /mnt/boot/efi
+    # Mount Linux boot partition at /boot/linux
+    mkdir -p /mnt/boot/linux
+    mount "$BOOT_PART" /mnt/boot/linux
+    
+    # Create shared storage mount point (will be configured later)
+    mkdir -p /mnt/mnt/shared
 }
 
 # Install base system
 install_base_system() {
     log "Installing base system..."
     
-    # Core packages
-    pacstrap /mnt base base-devel linux linux-firmware efibootmgr
+    # Core system packages
+    pacstrap /mnt base base-devel linux linux-firmware efibootmgr fwupd
     
     # Intel-specific packages for Dell XPS
-    pacstrap /mnt intel-media-driver intel-ucode libva-intel-driver vulkan-intel
+    pacstrap /mnt intel-media-driver intel-ucode libva-intel-driver vulkan-intel xf86-video-intel mesa
     
     # Audio system
     pacstrap /mnt pipewire pipewire-alsa pipewire-jack pipewire-pulse gst-plugin-pipewire wireplumber sof-firmware
     
-    # Network tools
+    # Network
     pacstrap /mnt iwd wireguard-tools networkmanager
     
+    # Display server
+    pacstrap /mnt xorg-server xorg-xev xorg-xinit
+    
+    # Desktop environment (GNOME)
+    pacstrap /mnt gdm gnome-control-center gnome-tweaks gnome-browser-connector gnome-notes nautilus
+    
     # Development tools
-    pacstrap /mnt git neovim rust-analyzer rustup go ghcup-hs-bin pyenv npm yarn uv
+    pacstrap /mnt git git-lfs neovim python-pynvim rust-analyzer rustup go ghcup-hs-bin pyenv npm yarn uv
     
-    # Desktop environment
-    pacstrap /mnt gdm gnome-control-center gnome-tweaks gnome-browser-connector nautilus
+    # Development libraries and tools
+    pacstrap /mnt capnproto ccls cython gdb gperf graphviz grpc gtksourceview3 jq lcov perf shellcheck tree-sitter valgrind wabt
     
-    # System utilities
-    pacstrap /mnt htop ncdu tree less man-db net-tools usbutils pv trash-cli zram-generator
+    # Python development
+    pacstrap /mnt python-black python-cryptography python-tox
+    
+    # Containerization
+    pacstrap /mnt docker docker-compose
+    
+    # Kubernetes tools
+    pacstrap /mnt kubectl kubectx kustomize k9s
+    
+    # Cloud tools
+    pacstrap /mnt google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin astro-cli
+    
+    # GitLab tools
+    pacstrap /mnt gitlab-runner glab
+    
+    # Monitoring and logging
+    pacstrap /mnt logcli
+    
+    # Databases
+    pacstrap /mnt postgresql valkey
+    
+    # Security tools
+    pacstrap /mnt vault keepassxc
     
     # Package management
     pacstrap /mnt yay-bin pkgfile
     
     # Shell and terminal
-    pacstrap /mnt zsh oh-my-zsh-git fzf direnv
+    pacstrap /mnt zsh oh-my-zsh-git bullet-train-oh-my-zsh-theme-git powerline powerline-fonts fzf direnv
     
     # Fonts
-    pacstrap /mnt noto-fonts-emoji ttf-fira-code ttf-fira-mono
+    pacstrap /mnt noto-fonts-emoji otf-fira-mono ttc-iosevka ttf-ancient-fonts ttf-fira-code ttf-fira-mono woff-fira-code woff2-fira-code
+    
+    # System utilities
+    pacstrap /mnt htop ncdu tree less man-db net-tools usbutils pv trash-cli zram-generator zsync
     
     # File system support
     pacstrap /mnt ntfs-3g unrar zip
     
+    # Compression and archiving
+    pacstrap /mnt rubber
+    
+    # Media and graphics
+    pacstrap /mnt vlc gimp inkscape blender f3d meshlab freecad openscad openscad-threadlib-git obs-studio
+    
+    # Office and productivity
+    pacstrap /mnt libreoffice-fresh thunderbird pdftk
+    
+    # LaTeX (large installation)
+    pacstrap /mnt texlive-bibtexextra texlive-fontsextra texlive-fontsrecommended texlive-langczechslovak texlive-latex texlive-latexextra texlive-latexrecommended texlive-luatex texlive-mathscience texlive-plaingeneric texlive-publishers textext
+    
     # Web browsers
     pacstrap /mnt firefox chromium
     
-    # Communication tools
+    # Communication
     pacstrap /mnt discord slack-desktop zoom
     
-    # Office suite
-    pacstrap /mnt libreoffice-fresh thunderbird
+    # VPN
+    pacstrap /mnt openfortivpn
     
-    # Media tools
-    pacstrap /mnt vlc gimp inkscape obs-studio
-    
-    # PDF viewer
-    pacstrap /mnt zathura zathura-pdf-poppler
-    
-    # Virtualization (optional)
+    # Virtualization
     pacstrap /mnt virtualbox virtualbox-guest-iso
     
-    # Additional useful packages
-    pacstrap /mnt grub sudo vim nano wget curl
+    # Wine/Windows compatibility
+    pacstrap /mnt playonlinux
+    
+    # Jupyter and data science
+    pacstrap /mnt jupyter-notebook
+    
+    # PDF viewer
+    pacstrap /mnt zathura zathura-cb zathura-djvu zathura-pdf-poppler zathura-ps
+    
+    # Window manager/launcher (Wayland)
+    pacstrap /mnt wofi wl-clipboard
+    
+    # Development tools (legacy/experimental)
+    pacstrap /mnt tk massif-visualizer
+    
+    # Fun utilities
+    pacstrap /mnt cowsay fortune-mod
+    
+    # System configuration
+    pacstrap /mnt dconf-editor
+    
+    # Audio editing
+    pacstrap /mnt audacity
+    
+    # Essential utilities
+    pacstrap /mnt sudo vim nano wget curl
     
     log "Base system installation completed"
 }
@@ -280,9 +312,9 @@ configure_encryption() {
     log "Encryption configuration completed"
 }
 
-# Configure bootloader
+# Configure systemd-boot
 configure_bootloader() {
-    log "Configuring bootloader..."
+    log "Configuring systemd-boot..."
     
     # Get UUID of root partition
     ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
@@ -290,17 +322,36 @@ configure_bootloader() {
     # Get swap partition UUID for hibernation
     SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART")
     
-    # Configure GRUB with hibernation support
-    cat >> /mnt/etc/default/grub << EOF
-GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"
-GRUB_CMDLINE_LINUX="cryptdevice=UUID=$ROOT_UUID:root resume=UUID=$SWAP_UUID"
+    # Install systemd-boot
+    arch-chroot /mnt bootctl install
+    
+    # Configure systemd-boot loader
+    cat > /mnt/boot/loader/loader.conf << EOF
+default  arch.conf
+timeout  4
+console-mode max
+editor   no
 EOF
     
-    # Install GRUB
-    arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
-    arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
+    # Create Arch Linux boot entry
+    cat > /mnt/boot/loader/entries/arch.conf << EOF
+title   Arch Linux
+linux   /linux/vmlinuz-linux
+initrd  /intel-ucode.img
+initrd  /linux/initramfs-linux.img
+options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP_UUID rw
+EOF
     
-    log "Bootloader configuration completed"
+    # Create Arch Linux fallback boot entry
+    cat > /mnt/boot/loader/entries/arch-fallback.conf << EOF
+title   Arch Linux (fallback initramfs)
+linux   /linux/vmlinuz-linux
+initrd  /intel-ucode.img
+initrd  /linux/initramfs-linux-fallback.img
+options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP_UUID rw
+EOF
+    
+    log "systemd-boot configuration completed"
 }
 
 # Configure services
@@ -350,9 +401,13 @@ set_passwords() {
 cleanup_and_reboot() {
     log "Cleaning up..."
     
+    # Deactivate swap
+    swapoff /dev/mapper/swap
+    
     # Close encrypted containers
     cryptsetup close root
     cryptsetup close swap
+    cryptsetup close shared
     
     # Unmount partitions
     umount -R /mnt
@@ -383,7 +438,7 @@ main() {
         exit 0
     fi
     
-    format_partitions
+    open_encrypted_containers
     mount_partitions
     install_base_system
     generate_fstab
