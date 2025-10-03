@@ -82,9 +82,9 @@ detect_disk_info() {
     echo "  Currently used space: ${used_space_mb}MB"
     echo "  Available free space: ${available_mb}MB"
     echo "  Linux partitions to create:"
-    echo "    Shared storage: $SHARED_SIZE (fills remaining space)"
     echo "    Linux boot: $BOOT_SIZE"
     echo "    Linux root: $LINUX_SIZE"
+    echo "    Shared storage: $SHARED_SIZE (fills remaining space)"
     echo "    Linux swap: $SWAP_SIZE"
     echo "  ✓ All partitions will fit with ${shared_gb}GB for shared storage"
 }
@@ -163,9 +163,9 @@ calculate_sizes() {
     
     info "Partition size summary:"
     echo "  Linux partitions total: ${LINUX_USED_MB}MB"
-    echo "    Shared storage: ${SHARED_MB}MB (${SHARED_SIZE})"
     echo "    Linux boot: ${BOOT_MB}MB (${BOOT_SIZE})"
     echo "    Linux root: ${LINUX_MB}MB (${LINUX_SIZE})"
+    echo "    Shared storage: ${SHARED_MB}MB (${SHARED_SIZE})"
     echo "    Linux swap: ${SWAP_MB}MB (${SWAP_SIZE})"
     echo
 }
@@ -201,40 +201,40 @@ add_linux_partitions() {
     # Calculate sizes
     calculate_sizes
     
-    # Calculate partition boundaries for Linux partitions
-    local shared_end=$((linux_start_mb + SHARED_MB))
-    local boot_end=$((shared_end + BOOT_MB))
+    # Calculate partition boundaries for Linux partitions (new order: boot, root, shared, swap)
+    local boot_end=$((linux_start_mb + BOOT_MB))
     local root_end=$((boot_end + LINUX_MB))
-    local swap_end=$((root_end + SWAP_MB))
+    local shared_end=$((root_end + SHARED_MB))
+    local swap_end=$((shared_end + SWAP_MB))
     
     info "Creating Linux partitions:"
-    info "  p5: Shared Storage (${SHARED_SIZE}) - LUKS encrypted"
-    info "  p6: Linux Boot (${BOOT_SIZE})"
-    info "  p7: Linux Root (${LINUX_SIZE}) - LUKS encrypted"
+    info "  p5: Linux Boot (${BOOT_SIZE})"
+    info "  p6: Linux Root (${LINUX_SIZE}) - LUKS encrypted"
+    info "  p7: Shared Storage (${SHARED_SIZE}) - LUKS encrypted"
     info "  p8: Linux Swap (${SWAP_SIZE}) - LUKS encrypted"
     echo
     
     log "Linux partition boundaries:"
-    log "  Shared: ${linux_start_mb}MiB - ${shared_end}MiB"
-    log "  Boot: ${shared_end}MiB - ${boot_end}MiB"
+    log "  Boot: ${linux_start_mb}MiB - ${boot_end}MiB"
     log "  Root: ${boot_end}MiB - ${root_end}MiB"
-    log "  Swap: ${root_end}MiB - ${swap_end}MiB"
-    
-    # Create LUKS Encrypted Shared Storage Partition
-    log "Creating LUKS encrypted shared partition..."
-    parted "$DISK" mkpart primary "${linux_start_mb}MiB" "${shared_end}MiB"
+    log "  Shared: ${root_end}MiB - ${shared_end}MiB"
+    log "  Swap: ${shared_end}MiB - ${swap_end}MiB"
     
     # Create Linux Boot Partition
     log "Creating Linux boot partition..."
-    parted "$DISK" mkpart primary ext4 "${shared_end}MiB" "${boot_end}MiB"
+    parted "$DISK" mkpart primary ext4 "${linux_start_mb}MiB" "${boot_end}MiB"
     
     # Create Linux Root Partition
     log "Creating Linux root partition..."
     parted "$DISK" mkpart primary "${boot_end}MiB" "${root_end}MiB"
     
+    # Create LUKS Encrypted Shared Storage Partition
+    log "Creating LUKS encrypted shared partition..."
+    parted "$DISK" mkpart primary "${root_end}MiB" "${shared_end}MiB"
+    
     # Create Linux Swap Partition
     log "Creating Linux swap partition..."
-    parted "$DISK" mkpart primary "${root_end}MiB" "${swap_end}MiB"
+    parted "$DISK" mkpart primary "${shared_end}MiB" "${swap_end}MiB"
     
     log "Linux partitions created successfully!"
     parted "$DISK" print
@@ -246,21 +246,21 @@ format_linux_partitions() {
     
     # Format Linux boot partition
     log "Formatting Linux boot partition..."
-    mkfs.ext4 -F -L "LinuxBoot" "${DISK}p6"
-    
-    # Set up LUKS encryption for shared partition
-    log "Setting up LUKS encryption for shared partition..."
-    cryptsetup luksFormat "${DISK}p5"
-    cryptsetup open "${DISK}p5" shared
-    mkfs.ext4 -F -L "SharedEncrypted" /dev/mapper/shared
-    cryptsetup close shared
+    mkfs.ext4 -F -L "LinuxBoot" "${DISK}p5"
     
     # Set up LUKS encryption for root partition
     log "Setting up LUKS encryption for root partition..."
-    cryptsetup luksFormat "${DISK}p7"
-    cryptsetup open "${DISK}p7" root
+    cryptsetup luksFormat "${DISK}p6"
+    cryptsetup open "${DISK}p6" root
     mkfs.ext4 -F -L "LinuxRoot" /dev/mapper/root
     cryptsetup close root
+    
+    # Set up LUKS encryption for shared partition
+    log "Setting up LUKS encryption for shared partition..."
+    cryptsetup luksFormat "${DISK}p7"
+    cryptsetup open "${DISK}p7" shared
+    mkfs.ext4 -F -L "SharedEncrypted" /dev/mapper/shared
+    cryptsetup close shared
     
     # Set up LUKS encryption for swap partition
     log "Setting up LUKS encryption for swap partition..."
