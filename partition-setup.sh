@@ -7,10 +7,10 @@ set -e
 
 # Configuration - Modify these values as needed
 DISK="/dev/nvme0n1"
-SHARED_SIZE="171GB"
 LINUX_SIZE="150GB"
 SWAP_SIZE="40GB"  # Increased for hibernation (32GB RAM + 8GB buffer)
 BOOT_SIZE="512MB"
+# SHARED_SIZE is auto-calculated to fill remaining space
 
 # Auto-detect disk and partition information
 detect_disk_info() {
@@ -42,15 +42,51 @@ detect_disk_info() {
         exit 1
     fi
     
+    # Calculate currently used space (existing partitions)
+    local used_space_bytes=0
+    for part in p1 p2 p3 p4; do
+        if [[ -b "${DISK}${part}" ]]; then
+            local part_size=$(lsblk -bno SIZE "${DISK}${part}" 2>/dev/null || echo "0")
+            used_space_bytes=$((used_space_bytes + part_size))
+        fi
+    done
+    local used_space_mb=$((used_space_bytes / 1024 / 1024))
+    local available_mb=$((TOTAL_SIZE_BYTES / 1024 / 1024 - used_space_mb))
+    
+    # Calculate space needed for fixed Linux partitions (boot, root, swap)
+    local linux_boot_mb=512  # BOOT_SIZE without GB/MB suffix
+    local linux_root_gb=$(echo "$LINUX_SIZE" | grep -oE '^[0-9]+')
+    local linux_root_mb=$((linux_root_gb * 1024))
+    local swap_gb=$(echo "$SWAP_SIZE" | grep -oE '^[0-9]+')
+    local swap_mb=$((swap_gb * 1024))
+    local fixed_linux_mb=$((linux_boot_mb + linux_root_mb + swap_mb))
+    
+    # Calculate shared storage size (fill remaining space)
+    local shared_mb=$((available_mb - fixed_linux_mb))
+    local shared_gb=$((shared_mb / 1024))
+    SHARED_SIZE="${shared_gb}GB"
+    
+    # Check if there's enough space
+    if [[ $shared_mb -lt 10240 ]]; then  # Less than 10GB for shared
+        error "Insufficient free space!"
+        error "Available: ${available_mb}MB, Fixed Linux partitions need: ${fixed_linux_mb}MB"
+        error "This leaves only ${shared_mb}MB for shared storage (minimum 10GB needed)"
+        error "Please shrink Windows partition further."
+        exit 1
+    fi
+    
     log "Detected disk information:"
     echo "  Total disk size: $TOTAL_SIZE"
-    echo "  EFI partition: $EFI_SIZE"
-    echo "  Windows partition: $WINDOWS_SIZE"
-    echo "  Configured Linux partitions:"
-    echo "    Shared storage: $SHARED_SIZE"
+    echo "  EFI partition: $EFI_SIZE (existing)"
+    echo "  Windows partition: $WINDOWS_SIZE (existing)"
+    echo "  Currently used space: ${used_space_mb}MB"
+    echo "  Available free space: ${available_mb}MB"
+    echo "  Linux partitions to create:"
+    echo "    Shared storage: $SHARED_SIZE (fills remaining space)"
+    echo "    Linux boot: $BOOT_SIZE"
     echo "    Linux root: $LINUX_SIZE"
     echo "    Linux swap: $SWAP_SIZE"
-    echo "    Linux boot: $BOOT_SIZE"
+    echo "  ✓ All partitions will fit with ${shared_gb}GB for shared storage"
 }
 
 # Colors
@@ -122,42 +158,15 @@ calculate_sizes() {
     EFI_MB=$(size_to_mb "$EFI_SIZE")
     BOOT_MB=$(size_to_mb "$BOOT_SIZE")
     
-    # Calculate space used by Linux partitions only
+    # Calculate space used by Linux partitions (now that SHARED_SIZE is auto-calculated)
     LINUX_USED_MB=$((SHARED_MB + LINUX_MB + SWAP_MB + BOOT_MB))
     
-    # Get currently used space (existing partitions)
-    local used_space_bytes=0
-    for part in p1 p2 p3 p4; do
-        if [[ -b "${DISK}${part}" ]]; then
-            local part_size=$(lsblk -bno SIZE "${DISK}${part}" 2>/dev/null || echo "0")
-            used_space_bytes=$((used_space_bytes + part_size))
-        fi
-    done
-    local used_space_mb=$((used_space_bytes / 1024 / 1024))
-    local available_mb=$((TOTAL_MB - used_space_mb))
-    
-    info "Partition size breakdown:"
-    echo "  Total disk: ${TOTAL_MB}MB (${TOTAL_SIZE})"
-    echo "  EFI partition: ${EFI_MB}MB (${EFI_SIZE}) - existing"
-    echo "  Windows partition: ${WINDOWS_MB}MB (${WINDOWS_SIZE}) - existing"
-    echo "  Currently used space: ${used_space_mb}MB"
-    echo "  Available free space: ${available_mb}MB"
-    echo "  Linux partitions to create:"
+    info "Partition size summary:"
+    echo "  Linux partitions total: ${LINUX_USED_MB}MB"
     echo "    Shared storage: ${SHARED_MB}MB (${SHARED_SIZE})"
     echo "    Linux boot: ${BOOT_MB}MB (${BOOT_SIZE})"
     echo "    Linux root: ${LINUX_MB}MB (${LINUX_SIZE})"
     echo "    Linux swap: ${SWAP_MB}MB (${SWAP_SIZE})"
-    echo "  Total Linux space needed: ${LINUX_USED_MB}MB"
-    
-    # Check if there's enough space
-    if [[ $available_mb -lt $LINUX_USED_MB ]]; then
-        error "Insufficient free space!"
-        error "Available: ${available_mb}MB, Needed: ${LINUX_USED_MB}MB"
-        error "Please shrink Windows partition further or reduce Linux partition sizes."
-        exit 1
-    else
-        info "✓ Sufficient free space available (${available_mb}MB >= ${LINUX_USED_MB}MB)"
-    fi
     echo
 }
 
