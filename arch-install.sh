@@ -60,7 +60,7 @@ get_user_input() {
         exit 1
     fi
     
-    read -p "Enter timezone (default: America/New_York): " TIMEZONE_INPUT
+    read -p "Enter timezone (default: $TIMEZONE): " TIMEZONE_INPUT
     if [[ -n "$TIMEZONE_INPUT" ]]; then
         TIMEZONE="$TIMEZONE_INPUT"
     fi
