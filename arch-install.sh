@@ -130,123 +130,29 @@ mount_partitions() {
     mkdir -p /mnt/mnt/shared
 }
 
-# Install base system
+# Install base system from packages.txt
 install_base_system() {
-    log "Installing base system..."
+    log "Installing base system from packages.txt..."
     
-    # Core system packages
-    pacstrap /mnt base base-devel linux linux-firmware efibootmgr fwupd
+    # Check if packages.txt exists
+    if [[ ! -f "packages.txt" ]]; then
+        error "packages.txt not found in current directory"
+        exit 1
+    fi
     
-    # Intel-specific packages for Dell XPS
-    pacstrap /mnt intel-media-driver intel-ucode libva-intel-driver vulkan-intel xf86-video-intel mesa
+    # Extract package names from packages.txt (ignore comments, versions, and commented lines)
+    local packages=$(grep -v '^#' packages.txt | grep -v '^$' | sed 's/#.*//' | awk '{print $1}' | grep -v '^$' | tr '\n' ' ')
     
-    # Audio system
-    pacstrap /mnt pipewire pipewire-alsa pipewire-jack pipewire-pulse gst-plugin-pipewire wireplumber sof-firmware
+    if [[ -z "$packages" ]]; then
+        error "No packages found in packages.txt"
+        exit 1
+    fi
     
-    # Network
-    pacstrap /mnt iwd wireguard-tools networkmanager
+    log "Found $(echo $packages | wc -w) packages to install"
+    info "Installing packages from packages.txt..."
     
-    # Display server
-    pacstrap /mnt xorg-server xorg-xev xorg-xinit
-    
-    # Desktop environment (GNOME)
-    pacstrap /mnt gdm gnome-control-center gnome-tweaks gnome-browser-connector gnome-notes nautilus
-    
-    # Development tools
-    pacstrap /mnt git git-lfs neovim python-pynvim rust-analyzer rustup go ghcup-hs-bin pyenv npm yarn uv
-    
-    # Development libraries and tools
-    pacstrap /mnt capnproto ccls cython gdb gperf graphviz grpc gtksourceview3 jq lcov perf shellcheck tree-sitter valgrind wabt
-    
-    # Python development
-    pacstrap /mnt python-black python-cryptography python-tox
-    
-    # Containerization
-    pacstrap /mnt docker docker-compose
-    
-    # Kubernetes tools
-    pacstrap /mnt kubectl kubectx kustomize k9s
-    
-    # Cloud tools
-    pacstrap /mnt google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin astro-cli
-    
-    # GitLab tools
-    pacstrap /mnt gitlab-runner glab
-    
-    # Monitoring and logging
-    pacstrap /mnt logcli
-    
-    # Databases
-    pacstrap /mnt postgresql valkey
-    
-    # Security tools
-    pacstrap /mnt vault keepassxc
-    
-    # Package management
-    pacstrap /mnt yay-bin pkgfile
-    
-    # Shell and terminal
-    pacstrap /mnt zsh oh-my-zsh-git bullet-train-oh-my-zsh-theme-git powerline powerline-fonts fzf direnv
-    
-    # Fonts
-    pacstrap /mnt noto-fonts-emoji otf-fira-mono ttc-iosevka ttf-ancient-fonts ttf-fira-code ttf-fira-mono woff-fira-code woff2-fira-code
-    
-    # System utilities
-    pacstrap /mnt htop ncdu tree less man-db net-tools usbutils pv trash-cli zram-generator zsync
-    
-    # File system support
-    pacstrap /mnt ntfs-3g unrar zip
-    
-    # Compression and archiving
-    pacstrap /mnt rubber
-    
-    # Media and graphics
-    pacstrap /mnt vlc gimp inkscape blender f3d meshlab freecad openscad openscad-threadlib-git obs-studio
-    
-    # Office and productivity
-    pacstrap /mnt libreoffice-fresh thunderbird pdftk
-    
-    # LaTeX (large installation)
-    pacstrap /mnt texlive-bibtexextra texlive-fontsextra texlive-fontsrecommended texlive-langczechslovak texlive-latex texlive-latexextra texlive-latexrecommended texlive-luatex texlive-mathscience texlive-plaingeneric texlive-publishers textext
-    
-    # Web browsers
-    pacstrap /mnt firefox chromium
-    
-    # Communication
-    pacstrap /mnt discord slack-desktop zoom
-    
-    # VPN
-    pacstrap /mnt openfortivpn
-    
-    # Virtualization
-    pacstrap /mnt virtualbox virtualbox-guest-iso
-    
-    # Wine/Windows compatibility
-    pacstrap /mnt playonlinux
-    
-    # Jupyter and data science
-    pacstrap /mnt jupyter-notebook
-    
-    # PDF viewer
-    pacstrap /mnt zathura zathura-cb zathura-djvu zathura-pdf-poppler zathura-ps
-    
-    # Window manager/launcher (Wayland)
-    pacstrap /mnt wofi wl-clipboard
-    
-    # Development tools (legacy/experimental)
-    pacstrap /mnt tk massif-visualizer
-    
-    # Fun utilities
-    pacstrap /mnt cowsay fortune-mod
-    
-    # System configuration
-    pacstrap /mnt dconf-editor
-    
-    # Audio editing
-    pacstrap /mnt audacity
-    
-    # Essential utilities
-    pacstrap /mnt sudo vim nano wget curl
+    # Install all packages at once
+    pacstrap /mnt $packages
     
     log "Base system installation completed"
 }
