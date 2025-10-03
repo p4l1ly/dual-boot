@@ -248,11 +248,11 @@ add_linux_partitions() {
     fi
     
     info "Creating Linux partitions between Windows data and Recovery:"
-    info "  p4: Linux Boot (${BOOT_SIZE})"
-    info "  p5: Linux Root (${LINUX_SIZE}) - LUKS encrypted"
-    info "  p6: Shared Storage (${SHARED_SIZE}) - LUKS encrypted"
-    info "  p7: Linux Swap (${SWAP_SIZE}) - LUKS encrypted"
-    info "  p8: Windows Recovery (moved to end)"
+    info "  p5: Linux Boot (${BOOT_SIZE}) - physically between p3 and p4"
+    info "  p6: Linux Root (${LINUX_SIZE}) - LUKS encrypted"
+    info "  p7: Shared Storage (${SHARED_SIZE}) - LUKS encrypted"
+    info "  p8: Linux Swap (${SWAP_SIZE}) - LUKS encrypted"
+    info "  p4: Windows Recovery (stays p4, moved physically to end)"
     echo
     
     log "Linux partition boundaries:"
@@ -288,26 +288,26 @@ format_linux_partitions() {
     
     # Format Linux boot partition
     log "Formatting Linux boot partition..."
-    mkfs.ext4 -F -L "LinuxBoot" "${DISK}p4"
+    mkfs.ext4 -F -L "LinuxBoot" "${DISK}p5"
     
     # Set up LUKS encryption for root partition
     log "Setting up LUKS encryption for root partition..."
-    cryptsetup luksFormat "${DISK}p5"
-    cryptsetup open "${DISK}p5" root
+    cryptsetup luksFormat "${DISK}p6"
+    cryptsetup open "${DISK}p6" root
     mkfs.ext4 -F -L "LinuxRoot" /dev/mapper/root
     cryptsetup close root
     
     # Set up LUKS encryption for shared partition
     log "Setting up LUKS encryption for shared partition..."
-    cryptsetup luksFormat "${DISK}p6"
-    cryptsetup open "${DISK}p6" shared
+    cryptsetup luksFormat "${DISK}p7"
+    cryptsetup open "${DISK}p7" shared
     mkfs.ext4 -F -L "SharedEncrypted" /dev/mapper/shared
     cryptsetup close shared
     
     # Set up LUKS encryption for swap partition
     log "Setting up LUKS encryption for swap partition..."
-    cryptsetup luksFormat "${DISK}p7"
-    cryptsetup open "${DISK}p7" swap
+    cryptsetup luksFormat "${DISK}p8"
+    cryptsetup open "${DISK}p8" swap
     mkswap -L "LinuxSwap" /dev/mapper/swap
     cryptsetup close swap
     
