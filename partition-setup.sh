@@ -42,16 +42,27 @@ detect_disk_info() {
         exit 1
     fi
     
-    # Calculate currently used space (existing partitions)
-    local used_space_bytes=0
-    for part in p1 p2 p3 p4; do
-        if [[ -b "${DISK}${part}" ]]; then
-            local part_size=$(lsblk -bno SIZE "${DISK}${part}" 2>/dev/null || echo "0")
-            used_space_bytes=$((used_space_bytes + part_size))
-        fi
-    done
-    local used_space_mb=$((used_space_bytes / 1024 / 1024))
-    local available_mb=$((TOTAL_SIZE_BYTES / 1024 / 1024 - used_space_mb))
+    # Calculate available space BETWEEN Windows data (p3) and Recovery (p4)
+    # Get partition boundaries
+    local windows_end_sector=$(parted "$DISK" unit s print 2>/dev/null | grep "^ 3" | awk '{print $3}' | sed 's/s//' || echo "0")
+    local recovery_start_sector=$(parted "$DISK" unit s print 2>/dev/null | grep "^ 4" | awk '{print $2}' | sed 's/s//' || echo "0")
+    
+    if [[ "$windows_end_sector" == "0" || "$recovery_start_sector" == "0" ]]; then
+        # Fallback: calculate based on total disk size minus used partitions
+        local used_space_bytes=0
+        for part in p1 p2 p3 p4; do
+            if [[ -b "${DISK}${part}" ]]; then
+                local part_size=$(lsblk -bno SIZE "${DISK}${part}" 2>/dev/null || echo "0")
+                used_space_bytes=$((used_space_bytes + part_size))
+            fi
+        done
+        local available_mb=$(((TOTAL_SIZE_BYTES - used_space_bytes) / 1024 / 1024))
+    else
+        # Calculate space between p3 and p4
+        local windows_end_mb=$(( (windows_end_sector * 512) / (1024 * 1024) ))
+        local recovery_start_mb=$(( (recovery_start_sector * 512) / (1024 * 1024) ))
+        local available_mb=$((recovery_start_mb - windows_end_mb))
+    fi
     
     # Calculate space needed for fixed Linux partitions (boot, root, swap)
     local linux_boot_mb=512  # BOOT_SIZE without GB/MB suffix
@@ -69,7 +80,8 @@ detect_disk_info() {
     # Check if there's enough space
     if [[ $shared_mb -lt 10240 ]]; then  # Less than 10GB for shared
         error "Insufficient free space!"
-        error "Available: ${available_mb}MB, Fixed Linux partitions need: ${fixed_linux_mb}MB"
+        error "Available between Windows and Recovery: ${available_mb}MB"
+        error "Fixed Linux partitions need: ${fixed_linux_mb}MB"
         error "This leaves only ${shared_mb}MB for shared storage (minimum 10GB needed)"
         error "Please shrink Windows partition further."
         exit 1
@@ -179,27 +191,48 @@ add_linux_partitions() {
     parted "$DISK" print
     echo
     
-    # Detect free space after Windows partitions dynamically
-    log "Detecting free space after Windows partitions..."
+    # Detect free space BETWEEN Windows data (p3) and Recovery (p4)
+    log "Detecting free space between Windows data and Recovery partitions..."
     
-    # Get the end of the last Windows partition (p4 - Recovery)
-    local recovery_end_sector=$(parted "$DISK" unit s print | grep "^ 4" | awk '{print $3}' | sed 's/s//')
-    if [[ -z "$recovery_end_sector" ]]; then
-        error "Could not detect Windows Recovery partition end. Please check partition layout."
+    # Get the end of Windows data partition (p3)
+    local windows_end_sector=$(parted "$DISK" unit s print | grep "^ 3" | awk '{print $3}' | sed 's/s//')
+    if [[ -z "$windows_end_sector" ]]; then
+        error "Could not detect Windows data partition end. Please check partition layout."
+        exit 1
+    fi
+    
+    # Get the start of Windows Recovery partition (p4)
+    local recovery_start_sector=$(parted "$DISK" unit s print | grep "^ 4" | awk '{print $2}' | sed 's/s//')
+    if [[ -z "$recovery_start_sector" ]]; then
+        error "Could not detect Windows Recovery partition start. Please check partition layout."
         exit 1
     fi
     
     # Convert sectors to MB (assuming 512 bytes per sector)
-    local recovery_end_mb=$(( (recovery_end_sector * 512) / (1024 * 1024) ))
+    local windows_end_mb=$(( (windows_end_sector * 512) / (1024 * 1024) ))
+    local recovery_start_mb=$(( (recovery_start_sector * 512) / (1024 * 1024) ))
+    local available_space_mb=$((recovery_start_mb - windows_end_mb))
     
-    # Start Linux partitions right after Windows Recovery, with small gap for alignment
-    local linux_start_mb=$((recovery_end_mb + 1))
+    # Start Linux partitions right after Windows data partition, with small gap for alignment
+    local linux_start_mb=$((windows_end_mb + 1))
+    local linux_end_mb=$((recovery_start_mb - 1))
     
-    log "Windows Recovery partition ends at sector $recovery_end_sector (${recovery_end_mb}MB)"
-    log "Linux partitions will start at ${linux_start_mb}MB"
+    log "Windows data partition ends at sector $windows_end_sector (${windows_end_mb}MB)"
+    log "Windows Recovery partition starts at sector $recovery_start_sector (${recovery_start_mb}MB)"
+    log "Available space for Linux: ${available_space_mb}MB"
+    log "Linux partitions will use: ${linux_start_mb}MB - ${linux_end_mb}MB"
     
     # Calculate sizes
     calculate_sizes
+    
+    # Validate that Linux partitions will fit in available space
+    if [[ $LINUX_USED_MB -gt $available_space_mb ]]; then
+        error "Linux partitions won't fit in available space!"
+        error "Available space: ${available_space_mb}MB"
+        error "Linux partitions need: ${LINUX_USED_MB}MB"
+        error "Please shrink Windows partition further to create more space."
+        exit 1
+    fi
     
     # Calculate partition boundaries for Linux partitions (new order: boot, root, shared, swap)
     local boot_end=$((linux_start_mb + BOOT_MB))
@@ -207,11 +240,19 @@ add_linux_partitions() {
     local shared_end=$((root_end + SHARED_MB))
     local swap_end=$((shared_end + SWAP_MB))
     
-    info "Creating Linux partitions:"
-    info "  p5: Linux Boot (${BOOT_SIZE})"
-    info "  p6: Linux Root (${LINUX_SIZE}) - LUKS encrypted"
-    info "  p7: Shared Storage (${SHARED_SIZE}) - LUKS encrypted"
-    info "  p8: Linux Swap (${SWAP_SIZE}) - LUKS encrypted"
+    # Ensure we don't exceed the available space
+    if [[ $swap_end -gt $linux_end_mb ]]; then
+        error "Partition layout exceeds available space!"
+        error "Last partition would end at ${swap_end}MB but space ends at ${linux_end_mb}MB"
+        exit 1
+    fi
+    
+    info "Creating Linux partitions between Windows data and Recovery:"
+    info "  p4: Linux Boot (${BOOT_SIZE})"
+    info "  p5: Linux Root (${LINUX_SIZE}) - LUKS encrypted"
+    info "  p6: Shared Storage (${SHARED_SIZE}) - LUKS encrypted"
+    info "  p7: Linux Swap (${SWAP_SIZE}) - LUKS encrypted"
+    info "  p8: Windows Recovery (moved to end)"
     echo
     
     log "Linux partition boundaries:"
@@ -219,6 +260,7 @@ add_linux_partitions() {
     log "  Root: ${boot_end}MiB - ${root_end}MiB"
     log "  Shared: ${root_end}MiB - ${shared_end}MiB"
     log "  Swap: ${shared_end}MiB - ${swap_end}MiB"
+    log "Recovery partition will be shifted to start after ${swap_end}MiB"
     
     # Create Linux Boot Partition
     log "Creating Linux boot partition..."
@@ -246,26 +288,26 @@ format_linux_partitions() {
     
     # Format Linux boot partition
     log "Formatting Linux boot partition..."
-    mkfs.ext4 -F -L "LinuxBoot" "${DISK}p5"
+    mkfs.ext4 -F -L "LinuxBoot" "${DISK}p4"
     
     # Set up LUKS encryption for root partition
     log "Setting up LUKS encryption for root partition..."
-    cryptsetup luksFormat "${DISK}p6"
-    cryptsetup open "${DISK}p6" root
+    cryptsetup luksFormat "${DISK}p5"
+    cryptsetup open "${DISK}p5" root
     mkfs.ext4 -F -L "LinuxRoot" /dev/mapper/root
     cryptsetup close root
     
     # Set up LUKS encryption for shared partition
     log "Setting up LUKS encryption for shared partition..."
-    cryptsetup luksFormat "${DISK}p7"
-    cryptsetup open "${DISK}p7" shared
+    cryptsetup luksFormat "${DISK}p6"
+    cryptsetup open "${DISK}p6" shared
     mkfs.ext4 -F -L "SharedEncrypted" /dev/mapper/shared
     cryptsetup close shared
     
     # Set up LUKS encryption for swap partition
     log "Setting up LUKS encryption for swap partition..."
-    cryptsetup luksFormat "${DISK}p8"
-    cryptsetup open "${DISK}p8" swap
+    cryptsetup luksFormat "${DISK}p7"
+    cryptsetup open "${DISK}p7" swap
     mkswap -L "LinuxSwap" /dev/mapper/swap
     cryptsetup close swap
     

@@ -86,13 +86,15 @@ wsl --install  # Install WSL
 ```
 /dev/nvme0n1p1  EFI System Partition    260MB   FAT32
 /dev/nvme0n1p2  Microsoft Reserved      16MB    NTFS
-/dev/nvme0n1p3  Windows System          150GB   NTFS
-/dev/nvme0n1p4  Windows Recovery        990MB   NTFS
-/dev/nvme0n1p5  Linux Boot             512MB   EXT4
-/dev/nvme0n1p6  Linux Root (Encrypted) 150GB   LUKS
-/dev/nvme0n1p7  Shared Storage (Encrypted) ~170GB LUKS (auto-sized)
-/dev/nvme0n1p8  Linux Swap (Encrypted) 40GB    LUKS (sized for hibernation)
+/dev/nvme0n1p3  Windows System          150GB   NTFS (shrunk)
+/dev/nvme0n1p4  Linux Boot             512MB   EXT4
+/dev/nvme0n1p5  Linux Root (Encrypted) 150GB   LUKS
+/dev/nvme0n1p6  Shared Storage (Encrypted) ~170GB LUKS (auto-sized)
+/dev/nvme0n1p7  Linux Swap (Encrypted) 40GB    LUKS (sized for hibernation)
+/dev/nvme0n1p8  Windows Recovery        990MB   NTFS (moved)
 ```
+
+**Note**: Linux partitions (p4-p7) are inserted between Windows data (p3) and Recovery (p8), with Recovery being moved to the end.
 
 ## Package Categories
 
