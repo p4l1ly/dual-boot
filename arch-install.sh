@@ -275,7 +275,38 @@ configure_bootloader() {
     
     # Install systemd-boot (will use /boot as default, /boot/efi as ESP)
     log "Installing systemd-boot..."
-    arch-chroot /install bootctl install
+    
+    # Debug: Show mount points
+    log "Current mount points:"
+    mount | grep /install
+    
+    # Debug: Check if EFI partition is properly formatted
+    log "Checking EFI partition..."
+    blkid "$EFI_PART"
+    
+    # Debug: Check if /boot/efi exists and is mounted
+    if ! mountpoint -q /install/boot/efi; then
+        error "/install/boot/efi is not a mount point!"
+        exit 1
+    fi
+    
+    # Try bootctl install with verbose output
+    log "Running bootctl install..."
+    if ! arch-chroot /install bootctl install 2>&1 | tee /tmp/bootctl-install.log; then
+        error "bootctl install failed! Log:"
+        cat /tmp/bootctl-install.log
+        
+        # Try with --esp-path specified
+        warning "Retrying with explicit ESP path..."
+        arch-chroot /install bootctl install --esp-path=/boot/efi 2>&1 | tee /tmp/bootctl-install-retry.log || {
+            error "bootctl install failed again! Check logs above."
+            exit 1
+        }
+    fi
+    
+    # Verify installation
+    log "Verifying bootctl installation..."
+    arch-chroot /install bootctl status || warning "bootctl status returned non-zero (might be expected)"
     
     # Create loader configuration
     cat > /install/boot/loader/loader.conf << EOF
