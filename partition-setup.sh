@@ -12,6 +12,9 @@ SWAP_SIZE="40GB"  # Increased for hibernation (32GB RAM + 8GB buffer)
 BOOT_SIZE="512MB"
 # SHARED_SIZE is auto-calculated to fill remaining space
 
+# Password file for automated LUKS setup
+PASSWORD_FILE="luks-password.txt"
+
 # Auto-detect disk and partition information
 detect_disk_info() {
     log "Auto-detecting disk and partition information..."
@@ -286,28 +289,48 @@ add_linux_partitions() {
 format_linux_partitions() {
     log "Formatting Linux partitions only (Windows partitions untouched)..."
     
-    # Format Linux boot partition as FAT32 (required for XBOOTLDR support)
-    log "Formatting Linux boot partition as FAT32..."
-    mkfs.vfat -F 32 -n "XBOOTLDR" "${DISK}p5"
+    # Check for password file
+    if [[ ! -f "$PASSWORD_FILE" ]]; then
+        error "Password file '$PASSWORD_FILE' not found!"
+        error "Create it with: echo 'your-password' > $PASSWORD_FILE && chmod 600 $PASSWORD_FILE"
+        exit 1
+    fi
+    
+    # Validate password file is not empty
+    if [[ ! -s "$PASSWORD_FILE" ]]; then
+        error "Password file '$PASSWORD_FILE' is empty!"
+        exit 1
+    fi
+    
+    log "Using password from: $PASSWORD_FILE"
+    
+    # Format Linux boot partition as FAT32 (ESP for Linux)
+    log "Formatting Linux boot partition as FAT32 (ESP)..."
+    mkfs.vfat -F 32 -n "LINUXESP" "${DISK}p5"
+    
+    # Set partition type to EFI System Partition
+    log "Setting partition type to ESP..."
+    sgdisk --typecode=5:EF00 "${DISK}"
+    partprobe "${DISK}"
     
     # Set up LUKS encryption for root partition
     log "Setting up LUKS encryption for root partition..."
-    cryptsetup luksFormat "${DISK}p6"
-    cryptsetup open "${DISK}p6" root
+    cryptsetup luksFormat "${DISK}p6" "$PASSWORD_FILE"
+    cryptsetup open "${DISK}p6" root --key-file="$PASSWORD_FILE"
     mkfs.ext4 -F -L "LinuxRoot" /dev/mapper/root
     cryptsetup close root
     
     # Set up LUKS encryption for shared partition
     log "Setting up LUKS encryption for shared partition..."
-    cryptsetup luksFormat "${DISK}p7"
-    cryptsetup open "${DISK}p7" shared
+    cryptsetup luksFormat "${DISK}p7" "$PASSWORD_FILE"
+    cryptsetup open "${DISK}p7" shared --key-file="$PASSWORD_FILE"
     mkfs.ext4 -F -L "SharedEncrypted" /dev/mapper/shared
     cryptsetup close shared
     
     # Set up LUKS encryption for swap partition
     log "Setting up LUKS encryption for swap partition..."
-    cryptsetup luksFormat "${DISK}p8"
-    cryptsetup open "${DISK}p8" swap
+    cryptsetup luksFormat "${DISK}p8" "$PASSWORD_FILE"
+    cryptsetup open "${DISK}p8" swap --key-file="$PASSWORD_FILE"
     mkswap -L "LinuxSwap" /dev/mapper/swap
     cryptsetup close swap
     

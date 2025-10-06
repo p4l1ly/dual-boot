@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-echo "=== Reinstall systemd-boot (no chroot needed) ==="
+echo "=== Reinstall systemd-boot (simplified single ESP) ==="
 
 # Require root
 if [[ $EUID -ne 0 ]]; then
@@ -11,57 +11,41 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 DISK="/dev/nvme0n1"
-EFI_PART="/dev/nvme0n1p1"     # ESP (FAT32)
-BOOT_PART="/dev/nvme0n1p5"    # XBOOTLDR (FAT32)
-ROOT_PART="/dev/nvme0n1p6"    # Not used here
+BOOT_PART="/dev/nvme0n1p5"    # Linux ESP (FAT32, 512MB)
+ROOT_PART="/dev/nvme0n1p6"    # For UUID
 SWAP_PART="/dev/nvme0n1p8"    # For resume UUID
 
-EFI_MOUNT="/mnt/efi"
 BOOT_MOUNT="/mnt/boot"
 
-mkdir -p "$EFI_MOUNT" "$BOOT_MOUNT"
+mkdir -p "$BOOT_MOUNT"
 
-# Mount ESP
-if ! mountpoint -q "$EFI_MOUNT"; then
-	mount "$EFI_PART" "$EFI_MOUNT"
-fi
-
-# Mount XBOOTLDR
+# Mount Linux ESP
 if ! mountpoint -q "$BOOT_MOUNT"; then
 	mount "$BOOT_PART" "$BOOT_MOUNT"
 fi
 
 echo
-echo "ESP mounted at:   $EFI_MOUNT"
-echo "BOOT mounted at:  $BOOT_MOUNT"
+echo "Linux ESP (p5) mounted at: $BOOT_MOUNT"
 
-# Verify filesystems
-EFI_FS=$(blkid -s TYPE -o value "$EFI_PART" || true)
+# Verify filesystem
 BOOT_FS=$(blkid -s TYPE -o value "$BOOT_PART" || true)
+echo "Boot fs: ${BOOT_FS:-unknown}"
 
-echo "ESP fs:  ${EFI_FS:-unknown}"
-echo "BOOT fs: ${BOOT_FS:-unknown}"
-
-if [[ "$EFI_FS" != vfat ]]; then
-	echo "ERROR: ESP ($EFI_PART) is not vfat. Aborting." >&2
-	exit 1
-fi
 if [[ "$BOOT_FS" != vfat ]]; then
-	echo "ERROR: XBOOTLDR ($BOOT_PART) is not vfat. Re-run partition-setup to format p5 as FAT32." >&2
+	echo "ERROR: Boot partition ($BOOT_PART) is not vfat. Re-run partition-setup to format p5 as FAT32." >&2
 	exit 1
 fi
 
-# Ensure directories exist on BOOT
+# Ensure directories exist
 mkdir -p "$BOOT_MOUNT/loader/entries"
 
-# Reinstall systemd-boot directly using explicit paths
-# This copies systemd-bootx64.efi to ESP and prepares loader dirs under BOOT
-if ! bootctl --esp-path="$EFI_MOUNT" --boot-path="$BOOT_MOUNT" install; then
+# Reinstall systemd-boot to p5
+if ! bootctl --esp-path="$BOOT_MOUNT" install; then
 	echo "bootctl install failed. Check that systemd is installed on the live ISO and Secure Boot is disabled." >&2
 	exit 1
 fi
 
-echo "✓ systemd-boot installed"
+echo "✓ systemd-boot installed to p5"
 
 # Build loader.conf
 cat > "$BOOT_MOUNT/loader/loader.conf" << 'EOF'
@@ -100,11 +84,11 @@ EOF
 
 echo "✓ loader entries written"
 
-# Ensure a UEFI NVRAM entry exists and is first
+# Ensure a UEFI NVRAM entry exists and is first (pointing to p5)
 if ! efibootmgr | grep -q "Linux Boot Manager"; then
 	efibootmgr --create \
 		--disk "$DISK" \
-		--part 1 \
+		--part 5 \
 		--label "Linux Boot Manager" \
 		--loader '\EFI\systemd\systemd-bootx64.efi' || true
 fi
@@ -121,26 +105,26 @@ else
 fi
 
 echo
-echo "Contents of $EFI_MOUNT/EFI/systemd:"
-ls -la "$EFI_MOUNT/EFI/systemd" || true
+echo "Contents of Linux ESP:"
+ls -la "$BOOT_MOUNT/EFI/systemd/" || true
 
 echo
 echo "Loader entries:"
-ls -la "$BOOT_MOUNT/loader/entries" || true
+ls -la "$BOOT_MOUNT/loader/entries/" || true
 
 # Advise on Secure Boot
 echo
 echo "NOTE: Ensure Secure Boot is disabled in BIOS on Dell XPS 9350 (systemd-boot is not signed)."
+echo "Linux uses p5 as ESP, Windows uses p1 - completely separate"
 
 # Offer unmount
 echo
-read -r -p "Unmount EFI and BOOT mounts now? (Y/n): " UNM
+read -r -p "Unmount boot partition now? (Y/n): " UNM
 if [[ ! "$UNM" =~ ^[Nn]$ ]]; then
 	umount -R "$BOOT_MOUNT" 2>/dev/null || true
-	umount -R "$EFI_MOUNT" 2>/dev/null || true
 	echo "✓ Unmounted"
 else
-	echo "Mounts left in place: $EFI_MOUNT, $BOOT_MOUNT"
+	echo "Mount left in place: $BOOT_MOUNT"
 fi
 
 echo "=== Done. Reboot and test systemd-boot ==="

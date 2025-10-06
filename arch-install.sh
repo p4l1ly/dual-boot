@@ -16,9 +16,12 @@ SHARED_PART="/dev/nvme0n1p7"    # Shared Storage Partition (LUKS encrypted)
 SWAP_PART="/dev/nvme0n1p8"      # Linux Swap Partition (LUKS encrypted)
 RECOVERY_PART="/dev/nvme0n1p4"  # Windows Recovery (990MB, physically moved to end)
 HOSTNAME="palypc"
-USERNAME=""
+USERNAME="paly"
 TIMEZONE="Europe/Prague"
 LOCALE="en_US.UTF-8"
+
+# Password file for automated LUKS operations
+PASSWORD_FILE="luks-password.txt"
 
 # Colors for output
 RED='\033[0;31m'
@@ -52,18 +55,13 @@ check_root() {
     fi
 }
 
-# Get user input
+# Get user input (now automated - username and timezone are hardcoded)
 get_user_input() {
-    read -p "Enter username: " USERNAME
-    if [[ -z "$USERNAME" ]]; then
-        error "Username cannot be empty"
-        exit 1
-    fi
-    
-    read -p "Enter timezone (default: $TIMEZONE): " TIMEZONE_INPUT
-    if [[ -n "$TIMEZONE_INPUT" ]]; then
-        TIMEZONE="$TIMEZONE_INPUT"
-    fi
+    log "Using configuration:"
+    info "  Username: $USERNAME"
+    info "  Hostname: $HOSTNAME"
+    info "  Timezone: $TIMEZONE"
+    info "  Locale: $LOCALE"
 }
 
 # Verify partitions exist
@@ -131,10 +129,17 @@ cleanup_existing_state() {
 open_encrypted_containers() {
     log "Opening encrypted containers..."
     
-    # Open encrypted containers
-    cryptsetup open "$ROOT_PART" root
-    cryptsetup open "$SWAP_PART" swap
-    cryptsetup open "$SHARED_PART" shared
+    # Check for password file
+    if [[ ! -f "$PASSWORD_FILE" ]]; then
+        error "Password file '$PASSWORD_FILE' not found!"
+        error "It should have been created during partition-setup.sh"
+        exit 1
+    fi
+    
+    # Open encrypted containers using password file
+    cryptsetup open "$ROOT_PART" root --key-file="$PASSWORD_FILE"
+    cryptsetup open "$SWAP_PART" swap --key-file="$PASSWORD_FILE"
+    cryptsetup open "$SHARED_PART" shared --key-file="$PASSWORD_FILE"
     
     # Activate swap
     swapon /dev/mapper/swap
@@ -150,13 +155,9 @@ mount_partitions() {
     # Mount root partition
     mount /dev/mapper/root /install
     
-    # Mount Linux boot partition at /boot (for kernels, initramfs, and bootloader)
+    # Mount Linux ESP (p5) at /boot - contains bootloader AND kernels
     mkdir -p /install/boot
     mount "$BOOT_PART" /install/boot
-    
-    # Mount EFI partition at /boot/efi (traditional layout)
-    mkdir -p /install/boot/efi
-    mount "$EFI_PART" /install/boot/efi
     
     # Create shared storage mount point (will be configured later)
     mkdir -p /install/mnt/shared
@@ -249,10 +250,10 @@ configure_encryption() {
     dd bs=512 count=4 if=/dev/urandom of=/install/etc/keys/root.key
     chmod 600 /install/etc/keys/root.key
     
-    # Add keyfile to LUKS partitions
-    arch-chroot /install cryptsetup luksAddKey "$ROOT_PART" /etc/keys/root.key
-    arch-chroot /install cryptsetup luksAddKey "$SWAP_PART" /etc/keys/root.key
-    arch-chroot /install cryptsetup luksAddKey "$SHARED_PART" /etc/keys/root.key
+    # Add keyfile to LUKS partitions (using password file for authentication)
+    cryptsetup luksAddKey "$ROOT_PART" /install/etc/keys/root.key --key-file="$PASSWORD_FILE"
+    cryptsetup luksAddKey "$SWAP_PART" /install/etc/keys/root.key --key-file="$PASSWORD_FILE"
+    cryptsetup luksAddKey "$SHARED_PART" /install/etc/keys/root.key --key-file="$PASSWORD_FILE"
     
     # Configure mkinitcpio with hibernation support
     sed -i 's/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block filesystems fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 resume filesystems fsck)/' /install/etc/mkinitcpio.conf
@@ -273,47 +274,37 @@ configure_bootloader() {
     # Get swap partition UUID for hibernation
     SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART")
     
-    # Install systemd-boot (will use /boot as default, /boot/efi as ESP)
-    log "Installing systemd-boot..."
+    # Install systemd-boot to /boot (p5 is our ESP)
+    log "Installing systemd-boot to /boot (p5)..."
     
     # Debug: Show mount points
     log "Current mount points:"
     mount | grep /install
     
-    # Debug: Check if EFI partition is properly formatted
-    log "Checking EFI partition..."
-    blkid "$EFI_PART"
+    # Debug: Check if boot partition is properly formatted
+    log "Checking boot partition (p5)..."
+    blkid "$BOOT_PART"
     
-    # Debug: Check if /boot/efi exists and is mounted
-    if ! mountpoint -q /install/boot/efi; then
-        error "/install/boot/efi is not a mount point!"
+    # Verify /boot is mounted
+    if ! mountpoint -q /install/boot; then
+        error "/install/boot is not a mount point!"
         exit 1
     fi
     
-    # Try bootctl install with verbose output
+    # Install bootctl to /boot (simpler - single ESP)
     log "Running bootctl install..."
-    if ! arch-chroot /install bootctl install 2>&1 | tee /tmp/bootctl-install.log; then
-        error "bootctl install failed! Log:"
-        cat /tmp/bootctl-install.log
-        
-        # Try with --esp-path specified
-        warning "Retrying with explicit ESP path..."
-        arch-chroot /install bootctl install --esp-path=/boot/efi 2>&1 | tee /tmp/bootctl-install-retry.log || {
-            error "bootctl install failed again! Check logs above."
-            exit 1
-        }
-    fi
+    arch-chroot /install bootctl install
     
     # Verify installation
     log "Verifying bootctl installation..."
     arch-chroot /install bootctl status || warning "bootctl status returned non-zero (might be expected)"
     
-    # Ensure UEFI knows about systemd-boot
+    # Ensure UEFI knows about systemd-boot (on partition 5)
     log "Registering systemd-boot with UEFI..."
     if ! efibootmgr | grep -q "Linux Boot Manager"; then
         efibootmgr --create \
             --disk "$DISK" \
-            --part 1 \
+            --part 5 \
             --label "Linux Boot Manager" \
             --loader '\EFI\systemd\systemd-bootx64.efi' \
             --unicode || warning "Could not create UEFI boot entry"
@@ -351,7 +342,8 @@ options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP
 EOF
     
     log "systemd-boot configuration completed"
-    info "Boot partition (p5) is formatted as FAT32 (XBOOTLDR) - systemd-boot will find kernels automatically"
+    info "Boot partition (p5) is the ESP - contains both systemd-boot and kernels"
+    info "Windows uses p1, Linux uses p5 - completely separate"
 }
 
 # Configure services
