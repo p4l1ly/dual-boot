@@ -486,20 +486,61 @@ set_passwords() {
     arch-chroot /install passwd "$USERNAME"
 }
 
+# Configure keyboard (swap Escape and CapsLock)
+configure_keyboard() {
+    log "Configuring keyboard: swapping Escape and CapsLock..."
+    
+    # For X11 sessions (system-wide)
+    mkdir -p /install/etc/X11/xorg.conf.d
+    cat > /install/etc/X11/xorg.conf.d/90-custom-kbd.conf << 'EOF'
+Section "InputClass"
+    Identifier "keyboard defaults"
+    MatchIsKeyboard "on"
+    Option "XKbOptions" "caps:swapescape"
+EndSection
+EOF
+    
+    # For Wayland/GNOME - create helper script
+    mkdir -p /install/etc/skel/.local/bin
+    cat > /install/etc/skel/.local/bin/swap-caps-esc.sh << 'EOF'
+#!/bin/bash
+# Swap CapsLock and Escape for GNOME
+gsettings set org.gnome.desktop.input-sources xkb-options "['caps:swapescape']"
+EOF
+    chmod +x /install/etc/skel/.local/bin/swap-caps-esc.sh
+    
+    # Apply for the created user
+    mkdir -p /install/home/$USERNAME/.local/bin
+    cp /install/etc/skel/.local/bin/swap-caps-esc.sh /install/home/$USERNAME/.local/bin/
+    chown -R $USERNAME:$USERNAME /install/home/$USERNAME/.local
+    
+    # Set it in dconf for the user (will take effect on first login)
+    mkdir -p /install/home/$USERNAME/.config/dconf/user.d
+    cat > /install/home/$USERNAME/.config/dconf/user.d/00-keyboard << 'EOF'
+[org/gnome/desktop/input-sources]
+xkb-options=['caps:swapescape']
+EOF
+    chown -R $USERNAME:$USERNAME /install/home/$USERNAME/.config
+    
+    log "Keyboard configuration completed"
+}
+
 # Cleanup and reboot
 cleanup_and_reboot() {
     log "Cleaning up..."
     
-    # Deactivate swap
-    swapoff /dev/mapper/swap
+    # Deactivate swap first
+    swapoff /dev/mapper/swap 2>/dev/null || true
     
-    # Close encrypted containers
-    cryptsetup close root
-    cryptsetup close swap
-    cryptsetup close shared
+    # Unmount partitions (must happen before closing LUKS containers)
+    log "Unmounting partitions..."
+    umount -R /install 2>/dev/null || umount -l /install 2>/dev/null || true
     
-    # Unmount partitions
-    umount -R /install
+    # Now close encrypted containers
+    log "Closing encrypted containers..."
+    cryptsetup close shared 2>/dev/null || true
+    cryptsetup close swap 2>/dev/null || true
+    cryptsetup close root 2>/dev/null || true
     
     log "Installation completed successfully!"
     info "You can now reboot into your new Arch Linux installation"
@@ -539,6 +580,7 @@ main() {
     install_aur_packages
     configure_shared_storage
     set_passwords
+    configure_keyboard
     cleanup_and_reboot
 }
 
