@@ -382,8 +382,26 @@ install_aur_packages() {
     
     info "Installing yay-bin for AUR package management..."
     
+    # Test AUR connectivity first
+    if ! arch-chroot /install curl -s --max-time 10 https://aur.archlinux.org > /dev/null 2>&1; then
+        warning "Cannot reach aur.archlinux.org"
+        warning "This could be a temporary issue with AUR or network connectivity"
+        
+        echo -n "Skip AUR packages and continue? (Y/n): "
+        read -r SKIP_AUR
+        if [[ ! "$SKIP_AUR" =~ ^[Nn]$ ]]; then
+            warning "Skipping AUR packages installation"
+            info "You can install them manually after reboot with:"
+            info "  yay -S $aur_packages"
+            return
+        else
+            error "Cannot proceed without AUR access"
+            exit 1
+        fi
+    fi
+    
     # Install yay-bin manually with proper error handling
-    arch-chroot /install /bin/bash << EOFCHROOT
+    if ! arch-chroot /install /bin/bash << EOFCHROOT
         set -e
         
         # Create build directory in user's home
@@ -397,10 +415,13 @@ install_aur_packages() {
         
         # Clone and build as user
         cd "\$BUILD_DIR"
-        sudo -u $USERNAME git clone https://aur.archlinux.org/yay-bin.git
+        if ! sudo -u $USERNAME git clone https://aur.archlinux.org/yay-bin.git; then
+            echo "ERROR: Failed to clone yay-bin repository"
+            exit 1
+        fi
         
         if [ ! -d "\$BUILD_DIR/yay-bin" ]; then
-            echo "ERROR: Failed to clone yay-bin repository"
+            echo "ERROR: yay-bin directory not found after clone"
             exit 1
         fi
         
@@ -411,10 +432,10 @@ install_aur_packages() {
         cd /
         rm -rf "\$BUILD_DIR"
 EOFCHROOT
-    
-    if [ $? -ne 0 ]; then
+    then
         error "Failed to install yay-bin"
         warning "Skipping AUR packages installation"
+        info "You can install yay and AUR packages manually after reboot"
         return
     fi
     
