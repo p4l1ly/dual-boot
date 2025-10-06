@@ -341,11 +341,25 @@ EOF
 configure_services() {
     log "Configuring services..."
     
-    # Enable essential services
-    arch-chroot /install systemctl enable gdm
-    arch-chroot /install systemctl enable NetworkManager
-    arch-chroot /install systemctl enable bluetooth
-    arch-chroot /install systemctl enable fstrim.timer
+    # Enable essential services (with error handling)
+    local services=(
+        "gdm:Display Manager"
+        "iwd:Wireless Daemon"
+        "bluetooth:Bluetooth"
+        "fstrim.timer:SSD Trim"
+    )
+    
+    for service_info in "${services[@]}"; do
+        local service="${service_info%%:*}"
+        local description="${service_info##*:}"
+        
+        log "Enabling $description ($service)..."
+        if arch-chroot /install systemctl enable "$service" 2>&1; then
+            info "✓ $description enabled"
+        else
+            warning "✗ Failed to enable $service - may not be installed"
+        fi
+    done
     
     log "Services configuration completed"
 }
