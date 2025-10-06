@@ -184,23 +184,27 @@ EOF
 configure_encryption() {
     log "Configuring encryption..."
     
-    # Create keyfile for automatic decryption
+    # Create keyfile for automatic decryption of swap and shared
+    # NOTE: Root partition will require password at boot
     mkdir -p /install/etc/keys
     dd bs=512 count=4 if=/dev/urandom of=/install/etc/keys/root.key
     chmod 600 /install/etc/keys/root.key
     
-    # Add keyfile to LUKS partitions
-    cryptsetup luksAddKey "$ROOT_PART" /install/etc/keys/root.key --key-file="$PASSWORD_FILE"
+    # Add keyfile to SWAP and SHARED only (NOT root - we want password prompt for root)
     cryptsetup luksAddKey "$SWAP_PART" /install/etc/keys/root.key --key-file="$PASSWORD_FILE"
     cryptsetup luksAddKey "$SHARED_PART" /install/etc/keys/root.key --key-file="$PASSWORD_FILE"
     
     # Configure mkinitcpio with hibernation support
-    sed -i 's/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block filesystems fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 resume filesystems fsck)/' /install/etc/mkinitcpio.conf
+    # Order matters: keyboard/keymap before encrypt so you can type password
+    # encrypt before filesystems so root can be decrypted
+    sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf kms keyboard keymap consolefont block encrypt lvm2 resume filesystems fsck)/' /install/etc/mkinitcpio.conf
     
     # Regenerate initramfs
     arch-chroot /install mkinitcpio -P
     
     log "Encryption configuration completed"
+    info "Root partition will require password at boot"
+    info "Swap and shared will be auto-decrypted using keyfile"
 }
 
 # Configure systemd-boot

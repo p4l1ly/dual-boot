@@ -256,7 +256,9 @@ configure_encryption() {
     cryptsetup luksAddKey "$SHARED_PART" /install/etc/keys/root.key --key-file="$PASSWORD_FILE"
     
     # Configure mkinitcpio with hibernation support
-    sed -i 's/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block filesystems fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 resume filesystems fsck)/' /install/etc/mkinitcpio.conf
+    # Order matters: keyboard/keymap before encrypt so you can type password
+    # encrypt before filesystems so root can be decrypted
+    sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf kms keyboard keymap consolefont block encrypt lvm2 resume filesystems fsck)/' /install/etc/mkinitcpio.conf
     
     # Regenerate initramfs
     arch-chroot /install mkinitcpio -P
