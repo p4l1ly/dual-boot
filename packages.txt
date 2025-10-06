@@ -28,12 +28,16 @@ iwd 3.9-1
 wireguard-tools 1.0.20250521-1
 
 # Desktop environment (GNOME)
+gnome-shell 48.4-1
+gnome-session 48.0-1
+mutter 48.1-1
 gdm 48.0-2
 gnome-control-center 48.4-1
 gnome-tweaks 46.1-2
 gnome-browser-connector 42.1-7
 gnome-notes 40.1-10
 nautilus 48.3-1
+gnome-terminal 3.54.2-1
 
 # Development tools
 git 2.51.0-1
