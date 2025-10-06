@@ -383,33 +383,33 @@ install_aur_packages() {
     info "Installing yay-bin for AUR package management..."
     
     # Install yay-bin manually with proper error handling
-    arch-chroot /install /bin/bash << 'EOFCHROOT'
+    arch-chroot /install /bin/bash << EOFCHROOT
         set -e
         
         # Create build directory in user's home
-        USER_HOME="/home/'$USERNAME'"
-        BUILD_DIR="$USER_HOME/yay-build"
+        USER_HOME="/home/$USERNAME"
+        BUILD_DIR="\$USER_HOME/yay-build"
         
         # Clean up any previous attempts
-        rm -rf "$BUILD_DIR"
-        mkdir -p "$BUILD_DIR"
-        chown -R '$USERNAME':'$USERNAME' "$BUILD_DIR"
+        rm -rf "\$BUILD_DIR"
+        mkdir -p "\$BUILD_DIR"
+        chown -R $USERNAME:$USERNAME "\$BUILD_DIR"
         
         # Clone and build as user
-        cd "$BUILD_DIR"
-        sudo -u '$USERNAME' git clone https://aur.archlinux.org/yay-bin.git
+        cd "\$BUILD_DIR"
+        sudo -u $USERNAME git clone https://aur.archlinux.org/yay-bin.git
         
-        if [ ! -d "$BUILD_DIR/yay-bin" ]; then
+        if [ ! -d "\$BUILD_DIR/yay-bin" ]; then
             echo "ERROR: Failed to clone yay-bin repository"
             exit 1
         fi
         
-        cd "$BUILD_DIR/yay-bin"
-        sudo -u '$USERNAME' makepkg -si --noconfirm
+        cd "\$BUILD_DIR/yay-bin"
+        sudo -u $USERNAME makepkg -si --noconfirm
         
         # Cleanup
         cd /
-        rm -rf "$BUILD_DIR"
+        rm -rf "\$BUILD_DIR"
 EOFCHROOT
     
     if [ $? -ne 0 ]; then
