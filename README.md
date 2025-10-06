@@ -14,8 +14,8 @@ Your new Dell XPS 13" 9350 (258V, 32GB RAM, 512GB SSD, 13.4", OLED, 3K Touch) wi
 
 ## Files Overview
 
-### 📋 `packages.txt`
-Curated list of packages with comments indicating which ones are:
+### 📋 `packages.txt` & `packages-aur.txt`
+Curated lists of official and AUR packages with comments indicating which ones are:
 - Essential for your setup
 - Intel-specific (keep for Dell XPS)
 - Potentially outdated/unnecessary
@@ -33,8 +33,9 @@ Automated installation script that handles:
 - Partition verification
 - System installation
 - Encryption configuration
-- Bootloader setup
+- systemd-boot setup
 - Service configuration
+- Automatic kernel file copying to EFI partition
 
 ### 💾 `partition-setup.sh`
 Streamlined partition script for:
@@ -49,6 +50,9 @@ Post-installation configuration script for:
 - Development environment setup
 - GNOME desktop configuration
 - Security hardening
+
+### 📝 `EFI_PARTITION_NOTE.md`
+**Important**: Explains how kernel files are managed between the Linux boot partition (p5) and the EFI partition (p1), including automatic synchronization via pacman hooks.
 
 ## Quick Start
 
@@ -84,11 +88,11 @@ wsl --install  # Install WSL
 ## Partition Layout
 
 ```
-/dev/nvme0n1p1  EFI System Partition    260MB   FAT32
+/dev/nvme0n1p1  EFI System Partition    260MB   FAT32 (ESP)
 /dev/nvme0n1p2  Microsoft Reserved      16MB    NTFS
 /dev/nvme0n1p3  Windows System          150GB   NTFS (shrunk)
 /dev/nvme0n1p4  Windows Recovery        990MB   NTFS (physically moved to end)
-/dev/nvme0n1p5  Linux Boot             512MB   EXT4
+/dev/nvme0n1p5  Linux Boot (XBOOTLDR)  512MB   FAT32 (kernels stored here)
 /dev/nvme0n1p6  Linux Root (Encrypted) 150GB   LUKS
 /dev/nvme0n1p7  Shared Storage (Encrypted) ~170GB LUKS (auto-sized)
 /dev/nvme0n1p8  Linux Swap (Encrypted) 40GB    LUKS (sized for hibernation)

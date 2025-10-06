@@ -286,9 +286,9 @@ add_linux_partitions() {
 format_linux_partitions() {
     log "Formatting Linux partitions only (Windows partitions untouched)..."
     
-    # Format Linux boot partition
-    log "Formatting Linux boot partition..."
-    mkfs.ext4 -F -L "LinuxBoot" "${DISK}p5"
+    # Format Linux boot partition as FAT32 (required for XBOOTLDR support)
+    log "Formatting Linux boot partition as FAT32..."
+    mkfs.vfat -F 32 -n "XBOOTLDR" "${DISK}p5"
     
     # Set up LUKS encryption for root partition
     log "Setting up LUKS encryption for root partition..."

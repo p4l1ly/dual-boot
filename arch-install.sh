@@ -351,6 +351,7 @@ options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP
 EOF
     
     log "systemd-boot configuration completed"
+    info "Boot partition (p5) is formatted as FAT32 (XBOOTLDR) - systemd-boot will find kernels automatically"
 }
 
 # Configure services
