@@ -52,12 +52,10 @@ sudo cp /mnt/boot/loader/loader.conf /mnt/efi/loader/loader.conf
 echo "✓ loader.conf copied"
 
 echo
-echo "Step 5: Creating symlink for entries on EFI partition..."
-if [[ -d /mnt/efi/loader/entries ]]; then
-    sudo rm -rf /mnt/efi/loader/entries
-fi
-sudo ln -s /mnt/boot/loader/entries /mnt/efi/loader/entries
-echo "✓ Entries symlinked"
+echo "Step 5: Copying boot entries to EFI partition..."
+sudo mkdir -p /mnt/efi/loader/entries
+sudo cp /mnt/boot/loader/entries/*.conf /mnt/efi/loader/entries/
+echo "✓ Entries copied"
 
 echo
 echo "Step 6: Verifying configuration..."
