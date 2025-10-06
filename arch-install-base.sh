@@ -278,15 +278,27 @@ configure_services() {
     log "Services configuration completed"
 }
 
-# Configure encrypted shared storage
+# Configure encrypted swap and shared storage
 configure_shared_storage() {
-    log "Configuring encrypted shared storage..."
+    log "Configuring encrypted swap and shared storage..."
     
+    # Get UUIDs of encrypted partitions
+    SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART")
     SHARED_UUID=$(blkid -s UUID -o value "$SHARED_PART")
-    echo "shared UUID=$SHARED_UUID /etc/keys/root.key luks" >> /install/etc/crypttab
-    echo "/dev/mapper/shared /mnt/shared ext4 defaults,noatime 0 2" >> /install/etc/fstab
     
-    log "Encrypted shared storage configuration completed"
+    # Create crypttab for automatic decryption using keyfile
+    cat > /install/etc/crypttab << EOF
+# <name>  <device>                    <password>          <options>
+swap      UUID=$SWAP_UUID             /etc/keys/root.key  luks
+shared    UUID=$SHARED_UUID           /etc/keys/root.key  luks
+EOF
+    
+    # Add to fstab
+    echo "/dev/mapper/swap    none         swap    defaults        0 0" >> /install/etc/fstab
+    echo "/dev/mapper/shared  /mnt/shared  ext4    defaults,noatime 0 2" >> /install/etc/fstab
+    
+    log "Encrypted swap and shared storage configuration completed"
+    info "Both will be auto-decrypted on boot using keyfile"
 }
 
 # Set passwords
