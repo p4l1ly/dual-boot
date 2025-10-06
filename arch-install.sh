@@ -308,6 +308,22 @@ configure_bootloader() {
     log "Verifying bootctl installation..."
     arch-chroot /install bootctl status || warning "bootctl status returned non-zero (might be expected)"
     
+    # Ensure UEFI knows about systemd-boot
+    log "Registering systemd-boot with UEFI..."
+    if ! efibootmgr | grep -q "Linux Boot Manager"; then
+        efibootmgr --create \
+            --disk "$DISK" \
+            --part 1 \
+            --label "Linux Boot Manager" \
+            --loader '\EFI\systemd\systemd-bootx64.efi' \
+            --unicode || warning "Could not create UEFI boot entry"
+        
+        log "Current UEFI boot order:"
+        efibootmgr
+    else
+        info "Linux Boot Manager entry already exists in UEFI"
+    fi
+    
     # Create loader configuration
     cat > /install/boot/loader/loader.conf << EOF
 default  arch.conf
