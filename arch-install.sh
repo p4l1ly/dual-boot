@@ -512,7 +512,6 @@ EOF
     # Apply for the created user
     mkdir -p /install/home/$USERNAME/.local/bin
     cp /install/etc/skel/.local/bin/swap-caps-esc.sh /install/home/$USERNAME/.local/bin/
-    chown -R $USERNAME:$USERNAME /install/home/$USERNAME/.local
     
     # Set it in dconf for the user (will take effect on first login)
     mkdir -p /install/home/$USERNAME/.config/dconf/user.d
@@ -520,7 +519,10 @@ EOF
 [org/gnome/desktop/input-sources]
 xkb-options=['caps:swapescape']
 EOF
-    chown -R $USERNAME:$USERNAME /install/home/$USERNAME/.config
+    
+    # Fix ownership inside chroot (where the user exists)
+    arch-chroot /install chown -R $USERNAME:$USERNAME /home/$USERNAME/.local
+    arch-chroot /install chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
     
     log "Keyboard configuration completed"
 }
