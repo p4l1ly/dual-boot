@@ -292,7 +292,8 @@ format_linux_partitions() {
     # Check for password file
     if [[ ! -f "$PASSWORD_FILE" ]]; then
         error "Password file '$PASSWORD_FILE' not found!"
-        error "Create it with: echo 'your-password' > $PASSWORD_FILE && chmod 600 $PASSWORD_FILE"
+        error "Create it with: echo -n 'your-password' > $PASSWORD_FILE && chmod 600 $PASSWORD_FILE"
+        error "IMPORTANT: Use 'echo -n' to avoid adding a newline to your password!"
         exit 1
     fi
     

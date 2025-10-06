@@ -42,9 +42,9 @@ iwctl
 > station wlan0 connect "YourWiFi"
 > quit
 
-# Create password file
+# Create password file (use -n to avoid trailing newline)
 cd /path/to/dual-boot
-echo 'YourStrongPassword' > luks-password.txt
+echo -n 'YourStrongPassword' > luks-password.txt
 chmod 600 luks-password.txt
 ```
 
@@ -200,6 +200,9 @@ The original `arch-install.sh` (monolithic) is still in the repository if you pr
 ## Quick Command Reference
 
 ```bash
+# Create password file first
+echo -n 'YourPassword' > luks-password.txt && chmod 600 luks-password.txt
+
 # Full installation (split approach)
 sudo ./partition-setup.sh              # Format partitions
 sudo ./arch-install-base.sh            # Install base (live USB)

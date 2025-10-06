@@ -38,6 +38,9 @@ sudo ./arch-install.sh
 If you want to keep data on shared storage (p7):
 
 ```bash
+# 0. Create password file (if not already done)
+echo -n 'YourPassword' > luks-password.txt && chmod 600 luks-password.txt
+
 # 1. Clean EFI partition
 sudo ./cleanup-efi-for-reinstall.sh
 

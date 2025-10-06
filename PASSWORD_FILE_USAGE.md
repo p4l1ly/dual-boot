@@ -4,11 +4,13 @@ Both `partition-setup.sh` and `arch-install.sh` now use a password file for full
 
 ## Setup
 
-1. **Create the password file:**
+1. **Create the password file (no trailing newline):**
    ```bash
-   echo 'your-strong-password' > luks-password.txt
+   echo -n 'your-strong-password' > luks-password.txt
    chmod 600 luks-password.txt
    ```
+   
+   **Important:** Use `echo -n` to avoid adding a newline character to your password!
 
 2. **Run partition setup:**
    ```bash
@@ -59,8 +61,8 @@ This ensures systemd-boot can find boot entries on the XBOOTLDR partition.
 ## Example Workflow
 
 ```bash
-# 1. Create password file
-echo 'MySecurePass123!' > luks-password.txt
+# 1. Create password file (use -n to avoid trailing newline)
+echo -n 'MySecurePass123!' > luks-password.txt
 chmod 600 luks-password.txt
 
 # 2. Format partitions (uses password file)

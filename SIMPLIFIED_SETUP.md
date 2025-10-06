@@ -58,8 +58,8 @@
 ## Installation Steps
 
 ```bash
-# 1. Create password file
-echo 'YourStrongPassword' > luks-password.txt
+# 1. Create password file (use -n to avoid trailing newline)
+echo -n 'YourStrongPassword' > luks-password.txt
 chmod 600 luks-password.txt
 
 # 2. Format partitions (automated)
