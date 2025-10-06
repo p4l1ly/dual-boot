@@ -382,19 +382,41 @@ install_aur_packages() {
     
     info "Installing yay-bin for AUR package management..."
     
-    # Install yay-bin manually
-    arch-chroot /install /bin/bash -c "
-        # Ensure tmp directory exists and is writable
-        mkdir -p /tmp/yay-install
-        cd /tmp/yay-install
+    # Install yay-bin manually with proper error handling
+    arch-chroot /install /bin/bash << 'EOFCHROOT'
+        set -e
         
-        # Install yay-bin as the user
-        sudo -u $USERNAME bash -c '
-            git clone https://aur.archlinux.org/yay-bin.git
-            cd yay-bin
-            makepkg -si --noconfirm
-        '
-    "
+        # Create build directory in user's home
+        USER_HOME="/home/'$USERNAME'"
+        BUILD_DIR="$USER_HOME/yay-build"
+        
+        # Clean up any previous attempts
+        rm -rf "$BUILD_DIR"
+        mkdir -p "$BUILD_DIR"
+        chown -R '$USERNAME':'$USERNAME' "$BUILD_DIR"
+        
+        # Clone and build as user
+        cd "$BUILD_DIR"
+        sudo -u '$USERNAME' git clone https://aur.archlinux.org/yay-bin.git
+        
+        if [ ! -d "$BUILD_DIR/yay-bin" ]; then
+            echo "ERROR: Failed to clone yay-bin repository"
+            exit 1
+        fi
+        
+        cd "$BUILD_DIR/yay-bin"
+        sudo -u '$USERNAME' makepkg -si --noconfirm
+        
+        # Cleanup
+        cd /
+        rm -rf "$BUILD_DIR"
+EOFCHROOT
+    
+    if [ $? -ne 0 ]; then
+        error "Failed to install yay-bin"
+        warning "Skipping AUR packages installation"
+        return
+    fi
     
     # Remove yay-bin from the list if it exists
     aur_packages=$(echo "$aur_packages" | sed 's/yay-bin//' | sed 's/  / /g' | sed 's/^ *//' | sed 's/ *$//')
@@ -402,7 +424,9 @@ install_aur_packages() {
     # Install remaining AUR packages
     if [[ -n "$aur_packages" ]]; then
         info "Installing remaining AUR packages: $aur_packages"
-        arch-chroot /install sudo -u "$USERNAME" yay -S --noconfirm $aur_packages
+        arch-chroot /install sudo -u "$USERNAME" yay -S --noconfirm $aur_packages || {
+            warning "Some AUR packages failed to install"
+        }
     fi
     
     # Cleanup
