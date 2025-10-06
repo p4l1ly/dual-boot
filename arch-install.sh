@@ -268,11 +268,11 @@ configure_encryption() {
 configure_bootloader() {
     log "Configuring systemd-boot..."
     
-    # Get UUID of root partition
-    ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
+    # Get partition UUID (not LUKS UUID) for cryptdevice parameter
+    ROOT_PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART")
     
-    # Get swap partition UUID for hibernation
-    SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART")
+    # Get LUKS UUID for the opened swap (for resume parameter)
+    SWAP_UUID=$(blkid -s UUID -o value /dev/mapper/swap)
     
     # Install systemd-boot to /boot (p5 is our ESP)
     log "Installing systemd-boot to /boot (p5)..."
@@ -329,7 +329,7 @@ title   Arch Linux
 linux   /vmlinuz-linux
 initrd  /intel-ucode.img
 initrd  /initramfs-linux.img
-options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP_UUID rw
+options cryptdevice=PARTUUID=$ROOT_PARTUUID:root root=/dev/mapper/root resume=UUID=$SWAP_UUID rw
 EOF
     
     # Create Arch Linux fallback boot entry
@@ -338,7 +338,7 @@ title   Arch Linux (fallback initramfs)
 linux   /vmlinuz-linux
 initrd  /intel-ucode.img
 initrd  /initramfs-linux-fallback.img
-options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP_UUID rw
+options cryptdevice=PARTUUID=$ROOT_PARTUUID:root root=/dev/mapper/root resume=UUID=$SWAP_UUID rw
 EOF
     
     log "systemd-boot configuration completed"

@@ -58,11 +58,18 @@ EOF
 echo "✓ loader.conf written"
 
 # Gather UUIDs for entries
-ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART" || true)
-SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART" || true)
+ROOT_PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART" || true)
 
-if [[ -z "$ROOT_UUID" || -z "$SWAP_UUID" ]]; then
-	echo "WARNING: Could not determine ROOT/SWAP UUIDs. Entries will still be created; adjust later if needed."
+# Try to get swap UUID from opened mapper (if available)
+if [[ -b /dev/mapper/swap ]]; then
+	SWAP_UUID=$(blkid -s UUID -o value /dev/mapper/swap || true)
+else
+	SWAP_UUID=""
+	echo "WARNING: /dev/mapper/swap not open. Swap resume may not work until you update the boot entry."
+fi
+
+if [[ -z "$ROOT_PARTUUID" ]]; then
+	echo "WARNING: Could not determine ROOT PARTUUID. Entries will use placeholder."
 fi
 
 # Create entries
@@ -71,7 +78,7 @@ title   Arch Linux
 linux   /vmlinuz-linux
 initrd  /intel-ucode.img
 initrd  /initramfs-linux.img
-options cryptdevice=UUID=${ROOT_UUID:-<ROOT-UUID>}:root root=/dev/mapper/root resume=UUID=${SWAP_UUID:-<SWAP-UUID>} rw
+options cryptdevice=PARTUUID=${ROOT_PARTUUID:-<ROOT-PARTUUID>}:root root=/dev/mapper/root resume=UUID=${SWAP_UUID:-<SWAP-UUID>} rw
 EOF
 
 cat > "$BOOT_MOUNT/loader/entries/arch-fallback.conf" << EOF
@@ -79,7 +86,7 @@ title   Arch Linux (fallback initramfs)
 linux   /vmlinuz-linux
 initrd  /intel-ucode.img
 initrd  /initramfs-linux-fallback.img
-options cryptdevice=UUID=${ROOT_UUID:-<ROOT-UUID>}:root root=/dev/mapper/root resume=UUID=${SWAP_UUID:-<SWAP-UUID>} rw
+options cryptdevice=PARTUUID=${ROOT_PARTUUID:-<ROOT-PARTUUID>}:root root=/dev/mapper/root resume=UUID=${SWAP_UUID:-<SWAP-UUID>} rw
 EOF
 
 echo "✓ loader entries written"
