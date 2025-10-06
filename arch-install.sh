@@ -150,13 +150,13 @@ mount_partitions() {
     # Mount root partition
     mount /dev/mapper/root /install
     
-    # Mount EFI partition at /boot (systemd-boot requirement)
+    # Mount Linux boot partition at /boot (for kernels and initramfs)
     mkdir -p /install/boot
-    mount "$EFI_PART" /install/boot
+    mount "$BOOT_PART" /install/boot
     
-    # Mount Linux boot partition at /boot/linux
-    mkdir -p /install/boot/linux
-    mount "$BOOT_PART" /install/boot/linux
+    # Mount EFI partition at /efi (for systemd-boot)
+    mkdir -p /install/efi
+    mount "$EFI_PART" /install/efi
     
     # Create shared storage mount point (will be configured later)
     mkdir -p /install/mnt/shared
@@ -273,10 +273,11 @@ configure_bootloader() {
     # Get swap partition UUID for hibernation
     SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART")
     
-    # Install systemd-boot
-    arch-chroot /install bootctl install
+    # Install systemd-boot to EFI partition with XBOOTLDR support
+    arch-chroot /install bootctl install --esp-path=/efi --boot-path=/boot
     
-    # Configure systemd-boot loader
+    # Configure systemd-boot loader (in /boot since that's where entries will be)
+    mkdir -p /install/boot/loader/entries
     cat > /install/boot/loader/loader.conf << EOF
 default  arch.conf
 timeout  4
@@ -287,18 +288,18 @@ EOF
     # Create Arch Linux boot entry
     cat > /install/boot/loader/entries/arch.conf << EOF
 title   Arch Linux
-linux   /linux/vmlinuz-linux
+linux   /vmlinuz-linux
 initrd  /intel-ucode.img
-initrd  /linux/initramfs-linux.img
+initrd  /initramfs-linux.img
 options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP_UUID rw
 EOF
     
     # Create Arch Linux fallback boot entry
     cat > /install/boot/loader/entries/arch-fallback.conf << EOF
 title   Arch Linux (fallback initramfs)
-linux   /linux/vmlinuz-linux
+linux   /vmlinuz-linux
 initrd  /intel-ucode.img
-initrd  /linux/initramfs-linux-fallback.img
+initrd  /initramfs-linux-fallback.img
 options cryptdevice=UUID=$ROOT_UUID:root root=/dev/mapper/root resume=UUID=$SWAP_UUID rw
 EOF
     
