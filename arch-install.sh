@@ -150,13 +150,13 @@ mount_partitions() {
     # Mount root partition
     mount /dev/mapper/root /install
     
-    # Mount Linux boot partition at /boot (for kernels and initramfs)
+    # Mount Linux boot partition at /boot (for kernels, initramfs, and bootloader)
     mkdir -p /install/boot
     mount "$BOOT_PART" /install/boot
     
-    # Mount EFI partition at /efi (for systemd-boot)
-    mkdir -p /install/efi
-    mount "$EFI_PART" /install/efi
+    # Mount EFI partition at /boot/efi (traditional layout)
+    mkdir -p /install/boot/efi
+    mount "$EFI_PART" /install/boot/efi
     
     # Create shared storage mount point (will be configured later)
     mkdir -p /install/mnt/shared
@@ -273,11 +273,11 @@ configure_bootloader() {
     # Get swap partition UUID for hibernation
     SWAP_UUID=$(blkid -s UUID -o value "$SWAP_PART")
     
-    # Install systemd-boot to EFI partition with XBOOTLDR support
-    arch-chroot /install bootctl install --esp-path=/efi --boot-path=/boot
+    # Install systemd-boot (will use /boot as default, /boot/efi as ESP)
+    log "Installing systemd-boot..."
+    arch-chroot /install bootctl install
     
-    # Configure systemd-boot loader (in /boot since that's where entries will be)
-    mkdir -p /install/boot/loader/entries
+    # Create loader configuration
     cat > /install/boot/loader/loader.conf << EOF
 default  arch.conf
 timeout  4
