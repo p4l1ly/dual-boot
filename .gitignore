@@ -1,0 +1,107 @@
+# Sensitive files - DO NOT COMMIT
+luks-password.txt
+
+# Kernel module build artifacts
+*.ko
+*.o
+*.mod
+*.mod.c
+*.mod.o
+*.o.cmd
+*.ko.cmd
+*.symvers
+*.order
+.tmp_versions/
+Module.markers
+modules.order
+Module.symvers
+
+# C/C++ build artifacts
+*.a
+*.so
+*.so.*
+*.dylib
+*.out
+*.app
+
+# Compiled Object files
+*.slo
+*.lo
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# CMake build directories
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+
+# Meson build directories
+builddir/
+meson-private/
+meson-logs/
+
+# DKMS build artifacts
+/var/lib/dkms/
+
+# Downloaded packages and sources
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.zip
+*.deb
+*.rpm
+*.pkg.tar.zst
+
+# Git repositories cloned during build
+ipu7-camera-hal/
+ipu7-camera-bins/
+ipu7-drivers/
+icamerasrc/
+libcamera/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# Log files
+*.log
+dmesg.log
+build.log
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.iml
+.DS_Store
+
+# Test/debug output
+test-output/
+debug-output/
+
+# Virtual environments (if any Python scripts are added)
+venv/
+env/
+.venv/
+
+# Node modules (if any JS tools are used)
+node_modules/
+
+# System files
+.directory
+Thumbs.db
+
